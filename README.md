@@ -33,7 +33,7 @@ Har bir ekranda o'ng yuqorida qo'ng'iroqcha bor:
 > AI natijalari yakuniy haqiqat emas — ma'lumotlarga asoslangan ehtimoliy tahlil va tavsiya.
 
 ## 🌐 Web versiya (GitHub Pages)
-Sayt manzili: **https://ndoston1202-glitch.github.io/sayohatchi-ai/**
+Sayt manzili: **https://ndoston1202-glitch.github.io/Sayohatchi-AI/**
 - `main` ga har push qilinganda `.github/workflows/pages.yml` saytni avtomatik yangilaydi.
 - Sayt **ilova sifatida o'rnatiladi** (PWA): bosh sahifadagi "📲 O'rnatish" tugmasi yoki brauzer menyusi orqali. Internetsiz ham ochiladi.
 - 🔔 qo'ng'iroqcha `web/version.json` ni tekshiradi: versiya oshirilsa, barcha foydalanuvchilarda "Yangi versiya" chiqadi.
