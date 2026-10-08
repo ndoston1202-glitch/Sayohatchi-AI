@@ -2,6 +2,8 @@
 <html lang="uz">
 <head>
 <meta charset="utf-8">
+<meta name="description" content="Dam olish maskanlari sharhlarini AI yordamida tahlil qiluvchi platforma: Trust Score, shubhali sharhlar, reklama va real rasm taqqoslash.">
+<link rel="icon" href="icon.png">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Sayohatchi AI</title>
 <style>
@@ -59,6 +61,23 @@ nav svg{width:22px;height:22px}
 .prog{height:6px;background:#eceef5;border-radius:4px;overflow:hidden}.prog i{display:block;height:100%;background:var(--pri2);transition:width .2s}
 .stat{display:grid;grid-template-columns:1fr 1fr;gap:10px}.stat .card{margin:0;text-align:center}.stat b{font-size:24px;display:block}
 .save{background:rgba(255,255,255,.2);border:0;color:#fff;border-radius:10px;padding:8px 12px;font:inherit}
+/* Kompyuter ekrani: markazlashgan konteyner, kartochkalar 2 ustunda */
+@media (min-width:760px){
+  body{padding-bottom:0;padding-top:64px}
+  #app{max-width:1040px;margin:0 auto}
+  header{border-radius:0 0 20px 20px;padding:28px 32px 32px}
+  header h1{font-size:30px}
+  main{padding:20px 24px}
+  .info3{grid-template-columns:repeat(3,1fr)}
+  #results,.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  #results>.mut{grid-column:1/-1}
+  #results .card{margin:0}
+  nav{top:0;bottom:auto;border-top:0;border-bottom:1px solid var(--line);justify-content:center;gap:8px;padding:0}
+  nav button{flex:none;flex-direction:row;gap:8px;font-size:14px;padding:18px 18px}
+  nav svg{width:18px;height:18px}
+  .toast{bottom:24px}
+  .imgs{max-width:560px}
+}
 </style>
 </head>
 <body>

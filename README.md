@@ -25,3 +25,22 @@ Brauzerda sinash: `web/index.html` ni oching.
 
 ## Keyingi bosqich (TZ bo'yicha)
 Next.js veb-versiya, FastAPI + PostgreSQL backend, LLM/Vision API, cloud deploy.
+
+## Web versiya — serverga o'rnatish
+Web versiya — `web/` papkadagi statik sayt (backend shart emas). Tayyor arxiv: `Sayohatchi-AI-web.zip`.
+
+**1-usul: nginx (VPS)**
+```bash
+sudo mkdir -p /var/www/sayohatchi && sudo unzip Sayohatchi-AI-web.zip -d /var/www/sayohatchi
+sudo cp deploy/nginx.conf /etc/nginx/sites-available/sayohatchi
+sudo sed -i 's|/usr/share/nginx/html|/var/www/sayohatchi|; s|server_name _;|server_name sizning-domen.uz;|' /etc/nginx/sites-available/sayohatchi
+sudo ln -s /etc/nginx/sites-available/sayohatchi /etc/nginx/sites-enabled/ && sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d sizning-domen.uz   # HTTPS
+```
+
+**2-usul: Docker**
+```bash
+docker build -t sayohatchi-web . && docker run -d --restart=always -p 80:80 sayohatchi-web
+```
+
+**3-usul:** `web/` papkani Vercel / Netlify / GitHub Pages'ga yuklang.
