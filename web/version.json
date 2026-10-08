@@ -1,11 +1,10 @@
 {
-  "version": "2.2.0",
+  "version": "2.3.0",
   "date": "2026-10-08",
   "apk": "download/Sayohatchi-AI.apk",
   "notes": [
-    "🗺 O'zbekiston xaritasi: viloyatni bosing — undagi maskanlar ko'rinadi",
-    "Maskan ustiga bosing — «Batafsil» tugmasi bilan ma'lumot",
-    "Xarita internetsiz ham ishlaydi",
-    "Telefon, planshet va kompyuterda bexato ochiladigan dizayn"
+    "💬 O'ng pastdagi logotip: AI yordamchi va ko'p beriladigan savollar (FAQ)",
+    "🎧 Support: murojaat qoldiring — admin javobi chatda va 🔔 da",
+    "AI byudjet, viloyat va maskan bo'yicha maslahat beradi (serverda Claude AI)"
   ]
 }

@@ -8,6 +8,7 @@ WorkingDirectory=/opt/sayohatchi
 Environment=SECRET_KEY=BU_YERGA_UZUN_TASODIFIY_KALIT
 Environment=ADMIN_CODE=BU_YERGA_ADMIN_KODI
 Environment=ANALYST_CODE=BU_YERGA_ANALITIK_KODI
+Environment=ANTHROPIC_API_KEY=BU_YERGA_CLAUDE_API_KALITI
 Environment=DB_PATH=/opt/sayohatchi/data/sayohatchi.db
 ExecStart=/opt/sayohatchi/venv/bin/uvicorn server.main:app --host 127.0.0.1 --port 8000 --proxy-headers
 Restart=always

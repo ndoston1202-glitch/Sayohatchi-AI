@@ -9,9 +9,10 @@
   const uid = p => (p || "") + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const PLATFORM = /[?&]app=1/.test(location.search) || /; wv\)/.test(navigator.userAgent) ? "app" : "web";
   const API = (window.SAYOHATCHI_API || "").replace(/\/$/, "");
-  const APP_VERSION = "2.2.0";
+  const APP_VERSION = "2.3.0";
   // Ilova ichidagi "Nima yangi" — oflayn ham ko'rinadi
   const CHANGELOG = [
+    { v: "2.3.0", notes: ["💬 O'ng pastdagi logotip: AI yordamchi va ko'p beriladigan savollar", "🎧 Support: murojaat qoldiring, admin javobi shu yerda", "AI byudjet, viloyat va maskan bo'yicha javob beradi (serverda — Claude AI)"] },
     { v: "2.2.0", notes: ["🗺 O'zbekiston xaritasi: viloyatni bosing — undagi maskanlar chiqadi", "Maskanni bosing — «Batafsil» tugmasi", "Xarita internetsiz ham ishlaydi", "Barcha qurilmalarga moslashuvchan dizayn"] },
     { v: "2.1.0", notes: ["4 xil hisob: Sayohatchi, Tashkilot, Analitik va Admin", "Admin paneli: bloklash, rol berish, tashkilotlarni tasdiqlash", "🔔 Qo'ng'iroqcha: bildirishnomalar va yangilanishlar"] },
     { v: "2.0.0", notes: ["Yashil tabiat dizayni va animatsiyalar", "Xarita", "Byudjet bo'yicha AI sayohat rejasi", "Analitika va AI sifati monitoringi"] }
@@ -31,7 +32,7 @@
   }
   let S;
   try { S = JSON.parse(localStorage.getItem(KEY)) || seed(); } catch (e) { S = seed(); }
-  ["orgs", "visits", "users", "events", "aiLogs", "saved", "jobs"].forEach(k => S[k] = S[k] || []);
+  ["orgs", "visits", "users", "events", "aiLogs", "saved", "jobs", "tickets", "chat"].forEach(k => S[k] = S[k] || []);
   S.outbox = S.outbox || { events: [], aiLogs: [] }; S.profile = S.profile || {}; S.visitor = S.visitor || uid("v"); S.analyses = S.analyses || {};
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { S.events = S.events.slice(-500); try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e2) {} } };
   let online = false; // backend mavjudmi
@@ -78,7 +79,8 @@
         st = await api("/api/v1/state");
       }
       online = true;
-      ["resorts", "reviews", "orgs", "visits"].forEach(k => S[k] = st[k]);
+      ["resorts", "reviews", "orgs", "visits", "tickets"].forEach(k => S[k] = st[k] || []);
+      if (!S.user) { try { S.tickets = await api("/api/v1/tickets/guest/" + encodeURIComponent(S.visitor)); } catch (e) {} }
       S.analyses = {}; S.resorts.forEach(r => analysis(r.id)); save(); render(); flush();
     } catch (e) { online = false; }
   }
@@ -815,7 +817,7 @@
   function devPanel() {
     const src = devSource();
     const isAdmin = role() === "admin";
-    const tabs = isAdmin ? [["dash", "🛡️ Boshqaruv"], ["users", "👥 Foydalanuvchilar"], ["resorts", "🏨 Maskanlar"], ["mod", "🛠 Sharhlar"], ["analytics", "📈 Analitika"], ["ai", "🤖 AI sifati"]]
+    const tabs = isAdmin ? [["dash", "🛡️ Boshqaruv"], ["support", "🎧 Support"], ["users", "👥 Foydalanuvchilar"], ["resorts", "🏨 Maskanlar"], ["mod", "🛠 Sharhlar"], ["analytics", "📈 Analitika"], ["ai", "🤖 AI sifati"]]
       : [["analytics", "📈 Analitika"], ["ai", "🤖 AI sifati"]];
     if (!tabs.some(t => t[0] === devTab)) devTab = tabs[0][0];
     const from = Date.now() - devRange * 86400000;
@@ -840,6 +842,16 @@
           <div class="kv"><span>Shubhali sharhlar</span><span class="badge ${sus ? "y" : "g"}">${sus}</span></div>
           <div class="kv"><span>Bloklangan hisoblar</span><b>${us.filter(u => u.blocked).length}</b></div>
           <div class="kv"><span>Server</span><span class="badge ${online ? "g" : "n"}">${online ? "ulangan" : "oflayn"}</span></div></div></div>`;
+    } else if (devTab === "support") {
+      const tk = S.tickets.slice().sort((a, b) => (a.status === "open" ? 0 : 1) - (b.status === "open" ? 0 : 1) || (b.updated || 0) - (a.updated || 0));
+      const c = s => S.tickets.filter(t => t.status === s).length;
+      const topics = {}; S.tickets.forEach(t => topics[t.subject] = (topics[t.subject] || 0) + 1);
+      body = `<div class="stat stat4"><div class="card reveal"><b data-count="${S.tickets.length}">0</b><span class="mut">jami murojaat</span></div>
+        <div class="card reveal"><b style="color:#a16207" data-count="${c("open")}">0</b><span class="mut">javob kutmoqda</span></div>
+        <div class="card reveal"><b data-count="${c("answered")}">0</b><span class="mut">javob berilgan</span></div><div class="card reveal"><b data-count="${c("closed")}">0</b><span class="mut">yopilgan</span></div></div>
+        ${Object.keys(topics).length ? `<div class="card reveal"><h2>📊 Mavzular</h2>${Object.entries(topics).sort((a, b) => b[1] - a[1]).map(([k, v]) => countRow(k, v, S.tickets.length)).join("")}</div>` : ""}
+        <div class="card reveal"><h2>📨 Murojaatlar</h2>${tk.map(t => `<div class="kv"><span style="min-width:0"><b>${esc(t.subject)}</b> ${tStatus(t)}<br><span class="mut">${esc(t.name)}${t.contact ? " · " + esc(t.contact) : ""} · ${ago(t.updated)} · ${t.platform === "app" ? "📱" : "🌐"}</span><br>
+          <span class="tk-last">${esc(t.messages[t.messages.length - 1].text)}</span></span><button class="btn ${t.status === "open" ? "" : "sec"}" data-tkopen="${t.id}" style="padding:6px 12px">${t.status === "open" ? "Javob berish" : "Ochish"}</button></div>`).join("") || `<div class="mut">Hali murojaat yo'q</div>`}</div>`;
     } else if (devTab === "resorts") {
       body = resortsManager(S.resorts.slice().sort((a, b) => (a.trust || 0) - (b.trust || 0)));
     } else if (devTab === "analytics") {
@@ -950,6 +962,7 @@
     $$("[data-unhide]").forEach(b => b.onclick = () => setHidden(b.dataset.unhide, false));
     $$("[data-verify]").forEach(b => b.onclick = () => { const o = S.orgs.find(x => x.id === b.dataset.verify); persist("orgs", Object.assign({}, o, { verified: !o.verified })); toast(o.verified ? "Tasdiq bekor qilindi" : "Tashkilot tasdiqlandi"); render(); });
     if ($("#pickmap") || $("[data-ed]")) resortsManagerBind();
+    $$("[data-tkopen]").forEach(b => b.onclick = () => { openTicket = b.dataset.tkopen; openChat("support"); });
     // Admin: foydalanuvchi rolini o'zgartirish va bloklash
     const updUser = async (id, patch) => {
       try {
@@ -961,6 +974,228 @@
     $$("[data-urole]").forEach(s => s.onchange = () => updUser(s.dataset.urole, { role: s.value }));
     $$("[data-ublock]").forEach(b => b.onclick = () => { const u = devSource().users.find(x => x.id === b.dataset.ublock); updUser(u.id, { blocked: !u.blocked }); });
   }
+
+  // ---------- 💬 AI yordamchi va Support ----------
+  const TICKET_TOPICS = ["Texnik muammo", "Maskan ma'lumoti noto'g'ri", "Shubhali sharh", "Hisob / kirish", "Taklif", "Boshqa"];
+  const QUICK = ["3 mln so'mga 2 kishi 3 kunga qayerga?", "Toshkentdagi maskanlar", "Eng ishonchli joylar", "Trust Score nima?", "Qanday sharh yozaman?", "Operator bilan bog'lanish"];
+  // Ko'p beriladigan savollar — tayyor javoblar (internetsiz, darhol)
+  const FAQ = [
+    ["Trust Score nima va qanday hisoblanadi?", "**Trust Score** (0–100) — sharhlar asosidagi AI bahosi:\n• Sharhlar ishonchliligi — 25%\n• Xizmat sifati — 20%\n• Tozalik — 15%\n• Xodimlar, ovqat, narx/sifat, reklama–real mosligi — 10% dan\nShubhali sharhlar bahoga kam ta'sir qiladi. Bu ehtimoliy tahlil, yakuniy hukm emas."],
+    ["Shubhali sharh degani soxta degani-mi?", "Yo'q. AI o'xshash matnlar, bir kunda ko'p sharh, haddan tashqari hissiy uslub va baho–matn nomuvofiqligini tekshirib **shubha foizini** ko'rsatadi. Bu faqat tekshiruv indikatori, \"soxta\" degan hukm emas."],
+    ["Byudjetimga mos joyni qanday topaman?", "Pastki menyudagi **AI reja** bo'limida byudjet, kunlar, kishilar soni va qayerdan chiqishingizni kiriting — AI yo'l, turar joy va ovqat xarajatini hisoblab, mos maskanlarni tavsiya qiladi. Yoki shu yerga yozing: «3 mln so'mga 2 kishi 3 kunga qayerga?»"],
+    ["Qanday sharh yozaman?", "Maskan sahifasini oching → **«Sharh qo'shish»** → yulduzcha bilan baho bering → tajribangizni yozing → **Yuborish**. AI darhol tahlil qilib, Trust Score'ni yangilaydi."],
+    ["Reklama va real rasmni qanday solishtiraman?", "Maskan sahifasida **«Reklama vs Real»** bo'limiga reklama rasmi va o'zingiz olgan rasmni yuklang. AI rang, kompozitsiya, yorug'lik va to'yinganlikni solishtirib, moslik foizini va farqlarni ko'rsatadi."],
+    ["Maskanimni platformaga qanday qo'shaman?", "**Profil** → **Tashkilot** rolini tanlab ro'yxatdan o'ting → tashkilot ma'lumotlarini kiriting → **«Maskanlarim»**da maskan qo'shing (narx, rasm, xaritada joy). Admin tasdiqlagach ✔ belgisi chiqadi."],
+    ["Xaritadan qanday foydalanaman?", "**Xarita** bo'limida viloyatni bosing — undagi maskanlar chiqadi. Maskan belgisini bosing va **«Batafsil»** orqali to'liq ma'lumotni oching."],
+    ["Ilovani qanday yangilayman?", "O'ng yuqoridagi 🔔 qo'ng'iroqchani bosing — yangi versiya bo'lsa **«Hozir yangilash»** tugmasi chiqadi. Saytni bosh ekranga **ilova sifatida o'rnatish** ham mumkin."],
+    ["Ma'lumotlarim xavfsizmi?", "Parollar serverda shifrlangan (PBKDF2) holda saqlanadi, sayohatlar tarixi va murojaatlar faqat sizga ko'rinadi. AI'ga faqat ochiq maskan ma'lumotlari yuboriladi."],
+    ["Inson bilan bog'lanish", "Albatta! **Support** bo'limida murojaat qoldiring — admin javobi shu oynada va 🔔 qo'ng'iroqchada chiqadi."]
+  ];
+  let chatTab = "ai", openTicket = null, chatBusy = false, faqOpen = false, claudeOK = null; // claudeOK: serverda Claude kaliti bormi
+  const myTickets = () => S.tickets.filter(t => role() === "admin" ? true : S.user ? t.userId === S.user.id : t.visitor === S.visitor);
+  const norm = t => String(t || "").toLowerCase().replace(/[‘’ʻʼ`]/g, "'");
+  const resortChip = r => `<button class="rchip" data-chatgo="resort/${r.id}">${r.emoji || "🏞️"} ${esc(r.name)} <b class="badge ${cls(r.trust)}">${r.trust == null ? "—" : r.trust}</b></button>`;
+  const fmtBot = t => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/\n/g, "<br>");
+
+  // Oflayn bot: platforma ma'lumotlari bo'yicha qoidaga asoslangan javoblar
+  function parseMoney(t) {
+    const m = t.match(/(\d+(?:[.,]\d+)?)\s*(mln|million|mlrd|ming|k\b|so'm|sum)?/);
+    if (!m) return null; let v = parseFloat(m[1].replace(",", "."));
+    const u = m[2] || ""; if (/mln|million/.test(u)) v *= 1e6; else if (/ming|k/.test(u)) v *= 1e3; else if (/mlrd/.test(u)) v *= 1e9;
+    return v >= 100000 ? v : null;
+  }
+  function localBot(q) {
+    const t = norm(q), out = { text: "", resorts: [], actions: [] };
+    const named = S.resorts.find(r => t.includes(norm(r.name).split(" ")[0]) && norm(r.name).split(" ")[0].length > 3);
+    const reg = REGIONS.map(f => f.properties.name).find(n => t.includes(norm(shortName(n)).slice(0, 5)));
+    const tagHit = INTERESTS.filter(i => t.includes(norm(i).replace("'", "")) || t.includes(norm(i)));
+    const budget = parseMoney(t);
+    if (/operator|odam bilan|support|yordam kerak|shikoyat|muammo bor|bog'lan/.test(t)) {
+      out.text = "Albatta! **Support** bo'limida murojaat qoldiring — admin javobi shu oynada va 🔔 qo'ng'iroqchada chiqadi.";
+      out.actions.push(["support", "🎧 Support'ga yozish"]); return out;
+    }
+    if (budget) {
+      const days = +((t.match(/(\d+)\s*(kun|kunga|kunlik)/) || [])[1] || 3), people = +((t.match(/(\d+)\s*(kishi|odam|nafar)/) || [])[1] || 2);
+      const city = Object.keys(CITIES).find(c => t.includes(norm(c).slice(0, 5))) || S.profile.city || "Toshkent";
+      const res = planTrip({ budget, days, people, city, interests: tagHit.length ? tagHit : (S.profile.interests || []) });
+      const ok = res.list.filter(x => x.fitsBudget);
+      if (ok.length) {
+        out.text = `**${som(budget)}** bilan ${people} kishi ${days} kunga (${city}dan) **${ok.length} ta** maskanga borish mumkin. Eng mos variantlar:\n` +
+          ok.slice(0, 3).map((x, i) => `${i + 1}. ${x.r.name} — jami ~${som(x.total)}, Trust ${x.r.trust}`).join("\n");
+        out.resorts = ok.slice(0, 3).map(x => x.r);
+      } else {
+        const c = res.list.slice().sort((a, b) => a.total - b.total)[0];
+        out.text = `Afsuski, ${som(budget)} ${days} kunga yetmaydi.${c ? ` Eng arzon variant — **${c.r.name}**: ~${som(c.total)}. Kunlar yoki kishilar sonini kamaytirib ko'ring.` : ""}`;
+        if (c) out.resorts = [c.r];
+      }
+      out.actions.push(["go:plan", "🎒 Batafsil AI reja"]); return out;
+    }
+    if (named) {
+      const a = analysis(named.id);
+      out.text = `**${named.name}** (${named.district}): Trust Score **${named.trust}**, ⭐ ${(+named.rating || 0).toFixed(1)}${named.price ? `, ${som(named.price)}/kecha` : ""}.\n` +
+        (a.strengths.length ? `Kuchli tomonlari: ${a.strengths.slice(0, 3).map(x => x.topic.toLowerCase()).join(", ")}.\n` : "") +
+        (a.problems.length ? `Ko'p tilga olingan muammo: ${a.problems.slice(0, 2).map(x => x.topic.toLowerCase()).join(", ")}.` : "Jiddiy muammo aniqlanmagan.");
+      out.resorts = [named]; return out;
+    }
+    if (reg) {
+      const list = resortsIn(reg).sort((a, b) => (b.trust || 0) - (a.trust || 0));
+      out.text = list.length ? `**${reg}**da ${list.length} ta maskan bor. Trust Score bo'yicha:` : `**${reg}**da hozircha maskan yo'q. Boshqa viloyatni ko'rib chiqing.`;
+      out.resorts = list.slice(0, 5); out.actions.push(["go:map", "🗺 Xaritada ko'rish"]); return out;
+    }
+    if (tagHit.length) {
+      const list = S.resorts.filter(r => (r.tags || []).some(x => tagHit.includes(x))).sort((a, b) => (b.trust || 0) - (a.trust || 0));
+      out.text = list.length ? `"${tagHit.join(", ")}" yo'nalishiga mos maskanlar:` : "Bu yo'nalish bo'yicha hozircha maskan topilmadi.";
+      out.resorts = list.slice(0, 5); return out;
+    }
+    if (/arzon|qimmat emas|tejam/.test(t)) {
+      const list = S.resorts.filter(r => r.price).sort((a, b) => a.price - b.price);
+      out.text = "Eng arzon maskanlar (1 kecha narxi bo'yicha):"; out.resorts = list.slice(0, 4); return out;
+    }
+    if (/eng yaxshi|ishonchli|tavsiya|zo'r|top/.test(t)) {
+      out.text = "Trust Score bo'yicha eng ishonchli maskanlar:"; out.resorts = S.resorts.slice().sort((a, b) => (b.trust || 0) - (a.trust || 0)).slice(0, 4); return out;
+    }
+    if (/trust|ishonch bal|score|bal qanday|qanday hisob/.test(t)) {
+      out.text = "**Trust Score** (0–100) — sharhlar asosidagi AI bahosi:\n• Sharhlar ishonchliligi — 25%\n• Xizmat — 20%\n• Tozalik — 15%\n• Xodimlar, ovqat, narx/sifat, reklama–real mosligi — 10% dan\nShubhali sharhlar bahoga kam ta'sir qiladi. Bu ehtimoliy tahlil, yakuniy hukm emas."; return out;
+    }
+    if (/shubhali|soxta|fake/.test(t)) {
+      out.text = "AI bir xil yoki juda o'xshash matnlar, bir kunda ko'p sharh, haddan tashqari hissiy uslub va baho–matn nomuvofiqligini tekshiradi. Natija — **shubha foizi**, \"soxta\" degan hukm emas."; return out;
+    }
+    if (/sharh|otziv|fikr qoldir/.test(t)) {
+      out.text = "Sharh yozish: maskan sahifasini oching → **«Sharh qo'shish»** → yulduzcha bilan baho bering → tajribangizni yozing → **Yuborish**. AI darhol tahlil qilib, Trust Score'ni yangilaydi."; out.actions.push(["go:search/", "🔎 Maskan tanlash"]); return out;
+    }
+    if (/rasm|reklama|foto/.test(t)) {
+      out.text = "Maskan sahifasida **«Reklama vs Real»** bo'limiga reklama rasmi va o'zingiz olgan rasmni yuklang — AI rang, kompozitsiya va yorug'likni solishtirib, moslik foizini beradi."; return out;
+    }
+    if (/ro'yxat|registr|kirish|parol|hisob/.test(t)) {
+      out.text = "Pastki menyudagi **Profil** → rolni tanlang (Sayohatchi, Tashkilot, Analitik, Admin) → **Ro'yxatdan o'tish**. Parolni unutgan bo'lsangiz, Support'ga yozing."; out.actions.push(["go:profile", "👤 Profil"]); out.actions.push(["support", "🎧 Support"]); return out;
+    }
+    if (/tashkilot|maskan qo'sh|biznes|egasi/.test(t)) {
+      out.text = "Tashkilot sifatida ro'yxatdan o'ting → tashkilot ma'lumotlarini kiriting → **«Maskanlarim»**da maskan qo'shing (narx, rasm, xaritada joy). Admin tasdiqlagach, ✔ belgisi paydo bo'ladi."; out.actions.push(["go:profile", "🏨 Tashkilot kabineti"]); return out;
+    }
+    if (/xarita|viloyat|qayerda/.test(t)) { out.text = "**Xarita** bo'limida viloyatni bosing — undagi maskanlar chiqadi, maskanni bosib «Batafsil»ni tanlang."; out.actions.push(["go:map", "🗺 Xarita"]); return out; }
+    if (/yangila|versiya|update/.test(t)) { out.text = "O'ng yuqoridagi 🔔 qo'ng'iroqchani bosing — yangi versiya bo'lsa **«Hozir yangilash»** tugmasi chiqadi."; return out; }
+    if (/salom|assalom|hello|privet|hi\b/.test(t)) { out.text = `Assalomu alaykum${S.user ? ", " + S.user.name : ""}! 🌿 Men Sayohatchi AI yordamchisiman. Byudjetingiz, viloyat yoki maskan nomini yozing — mos joy topib beraman.`; return out; }
+    if (/rahmat|raxmat|spasibo/.test(t)) { out.text = "Arzimaydi! Yaxshi dam oling 🌿"; return out; }
+    out.text = "Savolingizni tushunmadim 🤔 Masalan, so'rang:\n• «3 mln so'mga 2 kishi 3 kunga qayerga?»\n• «Samarqanddagi maskanlar»\n• «Chimyon haqida»\nYoki inson yordami uchun Support'ga yozing.";
+    out.actions.push(["support", "🎧 Support"]); out.unknown = true; return out;
+  }
+  // Server (Claude) uchun platforma katalogi — AI faqat shu ma'lumotga tayanadi
+  const chatCatalog = () => S.resorts.map(r => { const a = analysis(r.id); return { name: r.name, region: regionOf(r), district: r.district, price: r.price, food: r.food,
+    trust: r.trust, rating: r.rating, tags: r.tags, problems: a.problems.slice(0, 3).map(x => x.topic), strengths: a.strengths.slice(0, 3).map(x => x.topic), reviews: a.reviews.length }; });
+  async function askBot(q) {
+    S.chat.push({ role: "user", content: q, ts: Date.now() }); chatBusy = true; drawChat();
+    track("chat_message", current.split("/")[0], { len: q.length });
+    let msg = null;
+    if (online && claudeOK !== false) {
+      try {
+        const res = await api("/api/v1/chat", { method: "POST", timeout: 60000, body: { messages: S.chat.slice(-12).map(m => ({ role: m.role, content: m.content })), context: { page: current, resorts: chatCatalog() } } });
+        const mentioned = S.resorts.filter(r => res.reply.includes(r.name)).slice(0, 4);
+        msg = { role: "assistant", content: res.reply, resortIds: mentioned.map(r => r.id), source: "claude" }; claudeOK = true;
+        aiLog("run", null, { module: "chat", source: "claude" });
+      } catch (e) {
+        if (/ai_unavailable/.test(e.message)) claudeOK = false; else aiLog("error", null, { module: "chat", message: String(e.message).slice(0, 200) });
+      }
+    }
+    if (!msg) {
+      let r; try { r = localBot(q); } catch (e) { aiLog("error", null, { module: "chat", message: String(e).slice(0, 200) }); r = { text: "Kechirasiz, xatolik yuz berdi. Support'ga yozing.", resorts: [], actions: [["support", "🎧 Support"]] }; }
+      msg = { role: "assistant", content: r.text, resortIds: r.resorts.map(x => x.id), actions: r.actions, source: "local" };
+      aiLog("run", null, { module: "chat", source: "local", unknown: !!r.unknown });
+    }
+    msg.ts = Date.now(); S.chat.push(msg); S.chat = S.chat.slice(-60); chatBusy = false; save(); drawChat();
+  }
+  function chatBody() {
+    if (chatTab === "ai") {
+      const msgs = S.chat.length ? S.chat : [{ role: "assistant", content: `Assalomu alaykum${S.user ? ", " + S.user.name : ""}! 🌿 Men **Sayohatchi AI** yordamchisiman.\nByudjet, viloyat yoki maskan haqida so'rang — mos joy topib beraman.`, intro: true }];
+      return `<div class="chat-msgs" id="cmsgs">${msgs.map((m, i) => `<div class="cm ${m.role}">${m.role === "assistant" ? `<span class="cav">🤖</span>` : ""}<div class="cb">${fmtBot(m.content)}
+          ${(m.resortIds || []).map(id => resort(id)).filter(Boolean).map(resortChip).join("")}
+          ${(m.actions || []).map(([k, l]) => `<button class="cact" data-cact="${esc(k)}">${l}</button>`).join("")}
+          ${m.role === "assistant" && !m.intro ? `<div class="cfb"><span>${m.source === "claude" ? "Claude AI" : m.source === "faq" ? "FAQ" : "Oflayn yordamchi"}</span><button data-cfb="${i}:1" class="${m.fb === 1 ? "on" : ""}">👍</button><button data-cfb="${i}:0" class="${m.fb === 0 ? "on" : ""}">👎</button></div>` : ""}</div></div>`).join("")}
+        ${chatBusy ? `<div class="cm assistant"><span class="cav">🤖</span><div class="cb typing-dots"><i></i><i></i><i></i></div></div>` : ""}</div>
+        ${!S.chat.length || faqOpen ? `<div class="faq"><div class="faq-h">❓ Ko'p beriladigan savollar</div>${FAQ.map(([q], i) => `<button class="faq-q" data-faq="${i}"><span>${esc(q)}</span><i>›</i></button>`).join("")}</div>` : ""}
+        <div class="cquick"><button data-faqtoggle class="faq-t">${faqOpen ? "✕ FAQ'ni yopish" : "❓ FAQ"}</button>${QUICK.map(q => `<button data-cq="${esc(q)}">${esc(q)}</button>`).join("")}</div>
+        <form class="cinput" id="cform"><input id="cin" placeholder="Savolingizni yozing..." maxlength="600" autocomplete="off" aria-label="Xabar"><button class="btn" aria-label="Yuborish">➤</button></form>`;
+    }
+    // Support
+    const list = myTickets().sort((a, b) => (b.updated || 0) - (a.updated || 0));
+    if (openTicket) {
+      const t = S.tickets.find(x => x.id === openTicket);
+      if (t) return `<div class="tk-head"><button class="back2" data-tback>‹</button><div style="flex:1;min-width:0"><b>${esc(t.subject)}</b><div class="mut">#${esc(String(t.id).slice(-5))} · ${esc(t.name || "Mehmon")} · ${tStatus(t)}</div></div>
+          ${role() === "admin" && t.status !== "closed" ? `<button class="btn sec" data-tclose style="padding:6px 10px">Yopish</button>` : ""}</div>
+        <div class="chat-msgs" id="cmsgs">${t.messages.map(m => `<div class="cm ${m.from === "admin" ? "assistant" : "user"}">${m.from === "admin" ? `<span class="cav">🎧</span>` : ""}<div class="cb">${fmtBot(m.text)}<div class="mut" style="font-size:11px;margin-top:4px">${m.from === "admin" ? "Support" : esc(t.name || "Siz")} · ${ago(m.ts)}</div></div></div>`).join("")}</div>
+        ${t.status === "closed" ? `<div class="mut" style="text-align:center;padding:10px">Murojaat yopilgan. Yangi savol uchun yangi murojaat oching.</div>` : (S.user || t.visitor === S.visitor) ? `<form class="cinput" id="tform"><input id="tin" placeholder="${role() === "admin" ? "Javob yozing..." : "Xabar yozing..."}" maxlength="1000" aria-label="Xabar"><button class="btn" aria-label="Yuborish">➤</button></form>` : ""}`;
+    }
+    return `<div class="tk-list">${list.map(t => `<button class="tk" data-topen="${t.id}"><div style="flex:1;min-width:0;text-align:left"><b>${esc(t.subject)}</b><div class="mut tk-last">${esc(t.messages[t.messages.length - 1].text)}</div></div>${tStatus(t)}</button>`).join("") ||
+        `<div class="mut" style="text-align:center;padding:14px">Hali murojaatlar yo'q. Muammo yoki taklif bo'lsa, yozing — admin javob beradi.</div>`}</div>
+      ${role() === "admin" ? "" : `<div class="tk-new"><b>✉️ Yangi murojaat</b>
+        <select id="tsub" aria-label="Mavzu">${TICKET_TOPICS.map(x => `<option>${x}</option>`).join("")}</select>
+        <textarea id="ttext" placeholder="Muammoni batafsil yozing..." maxlength="1500"></textarea>
+        ${S.user ? "" : `<input id="tcontact" placeholder="Telefon yoki email (javob uchun)" maxlength="80">`}
+        <button class="btn full" id="tsend">Yuborish</button><div class="mut" style="font-size:12px;text-align:center">Odatda 24 soat ichida javob beramiz</div></div>`}`;
+  }
+  const tStatus = t => `<span class="badge ${t.status === "open" ? "y" : t.status === "answered" ? "g" : "n"}">${t.status === "open" ? "Kutilmoqda" : t.status === "answered" ? "Javob berildi" : "Yopildi"}</span>`;
+  function drawChat() {
+    const box = $("#chatbox"); if (!box) return;
+    box.querySelector(".chat-body").innerHTML = chatBody();
+    $("#csub").textContent = (claudeOK ? "🟢 Claude AI" : "🟢 AI yordamchi") + " · Support 24/7";
+    box.querySelectorAll("[data-ctab]").forEach(b => b.classList.toggle("on", b.dataset.ctab === chatTab));
+    const m = $("#cmsgs"); if (m) m.scrollTop = m.scrollHeight;
+    const f = $("#cform"); if (f) f.onsubmit = e => { e.preventDefault(); const v = $("#cin").value.trim(); if (v && !chatBusy) askBot(v); };
+    const tf = $("#tform"); if (tf) tf.onsubmit = e => { e.preventDefault(); const v = $("#tin").value.trim(); if (v) ticketReply(openTicket, v); };
+    if ($("#tsend")) $("#tsend").onclick = () => {
+      const text = $("#ttext").value.trim(); if (text.length < 10) return toast("Muammoni kamida 10 belgida yozing");
+      const contact = $("#tcontact") ? $("#tcontact").value.trim() : ""; if (!S.user && contact.length < 5) return toast("Javob uchun telefon yoki email kiriting");
+      const t = { id: uid("k"), userId: S.user ? S.user.id : "", visitor: S.visitor, name: S.user ? S.user.name : "Mehmon", contact: S.user ? S.user.email : contact,
+        role: role(), subject: $("#tsub").value, status: "open", platform: PLATFORM, page: current, created: Date.now(), updated: Date.now(), messages: [{ from: "user", text, ts: Date.now() }] };
+      persist("tickets", t); track("ticket_create", "support", { subject: t.subject }); openTicket = t.id; toast("Murojaat yuborildi ✅"); drawChat(); drawBell();
+    };
+    if ($("#cin") && matchMedia("(hover:hover)").matches) $("#cin").focus();
+  }
+  function ticketReply(id, text) {
+    const t = S.tickets.find(x => x.id === id); if (!t) return;
+    const admin = role() === "admin";
+    const nt = Object.assign({}, t, { messages: t.messages.concat([{ from: admin ? "admin" : "user", text, ts: Date.now() }]), status: admin ? "answered" : "open", updated: Date.now() });
+    persist("tickets", nt); track(admin ? "ticket_reply" : "ticket_message", "support"); drawChat(); drawBell();
+  }
+  function openChat(tab) {
+    if ($("#chatbox")) { if (tab) { chatTab = tab; drawChat(); } return; }
+    if (tab) chatTab = tab;
+    const box = document.createElement("div"); box.id = "chatbox"; box.className = "chatbox"; box.setAttribute("role", "dialog"); box.setAttribute("aria-label", "Yordamchi");
+    box.innerHTML = `<div class="chat-head"><div class="row" style="gap:10px"><img src="icon-192.png" alt="" class="chat-logo"><div><b>Sayohatchi yordamchi</b><div class="chat-sub" id="csub"></div></div></div><button class="icon-btn light" data-cclose aria-label="Yopish">✕</button></div>
+      <div class="chat-tabs"><button data-ctab="ai">🤖 AI yordamchi</button><button data-ctab="support">🎧 Support</button></div><div class="chat-body"></div>`;
+    document.body.appendChild(box); document.body.classList.add("chat-open"); requestAnimationFrame(() => box.classList.add("on"));
+    box.addEventListener("click", e => {
+      const el = e.target;
+      if (el.closest("[data-cclose]")) return closeChat();
+      const tb = el.closest("[data-ctab]"); if (tb) { chatTab = tb.dataset.ctab; openTicket = null; return drawChat(); }
+      const q = el.closest("[data-cq]"); if (q && !chatBusy) return askBot(q.dataset.cq);
+      if (el.closest("[data-faqtoggle]")) { faqOpen = !faqOpen; return drawChat(); }
+      const fq = el.closest("[data-faq]"); if (fq) { const [qq, aa] = FAQ[+fq.dataset.faq]; faqOpen = false;
+        S.chat.push({ role: "user", content: qq, ts: Date.now() }, { role: "assistant", content: aa, ts: Date.now(), source: "faq", actions: /Support/.test(aa) ? [["support", "🎧 Support'ga yozish"]] : [] });
+        track("faq_open", "chat", { q: qq }); save(); return drawChat(); }
+      const g = el.closest("[data-chatgo]"); if (g) { if (matchMedia("(max-width:759px)").matches) closeChat(); return go(g.dataset.chatgo); }
+      const a = el.closest("[data-cact]"); if (a) { const k = a.dataset.cact; if (k === "support") { chatTab = "support"; openTicket = null; return drawChat(); } if (matchMedia("(max-width:759px)").matches) closeChat(); return go(k.slice(3)); }
+      const fb = el.closest("[data-cfb]"); if (fb) { const [i, v] = fb.dataset.cfb.split(":").map(Number); const m = S.chat[i]; if (m && m.fb == null) { m.fb = v; aiLog("feedback", null, { module: "chat", ok: v === 1, source: m.source, note: v ? "" : S.chat[i - 1] ? S.chat[i - 1].content.slice(0, 200) : "", visitor: S.visitor }); save(); toast(v ? "Rahmat!" : "Rahmat, javobni yaxshilaymiz"); drawChat(); } return; }
+      const to = el.closest("[data-topen]"); if (to) { openTicket = to.dataset.topen; return drawChat(); }
+      if (el.closest("[data-tback]")) { openTicket = null; return drawChat(); }
+      if (el.closest("[data-tclose]")) { const t = S.tickets.find(x => x.id === openTicket); persist("tickets", Object.assign({}, t, { status: "closed", updated: Date.now() })); return drawChat(); }
+    });
+    drawChat(); track("chat_open", current.split("/")[0], { tab: chatTab });
+    refreshTickets();
+  }
+  async function refreshTickets() {
+    if (!online) return;
+    try {
+      S.tickets = S.user ? (await api("/api/v1/state")).tickets || [] : await api("/api/v1/tickets/guest/" + encodeURIComponent(S.visitor));
+      save(); if ($("#chatbox") && chatTab === "support") drawChat(); drawBell();
+    } catch (e) {}
+  }
+  setInterval(() => { if (!document.hidden) refreshTickets(); }, 30000);
+  function closeChat() { const b = $("#chatbox"); if (!b) return; b.classList.remove("on"); document.body.classList.remove("chat-open"); setTimeout(() => b.remove(), 280); }
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeChat(); });
+  const fab = document.createElement("button"); fab.id = "chatfab"; fab.setAttribute("aria-label", "AI yordamchi va Support");
+  fab.innerHTML = `<img src="icon-192.png" alt="" class="fab-logo"><span class="fab-chat">💬</span><span class="fab-dot"></span><span class="fab-tip">Savolingiz bormi?</span>`; fab.onclick = () => $("#chatbox") ? closeChat() : openChat();
+  document.body.appendChild(fab);
+  window.openSupport = () => openChat("support");
 
   // ---------- 🔔 Bildirishnomalar va yangilanishlar ----------
   let latest = null; // serverdagi so'nggi versiya
@@ -996,6 +1231,11 @@
         n.push({ id: "rev-" + v.id, icon: v.rating <= 2 ? "⚠️" : "⭐", title: `Yangi sharh: ${resort(v.resortId).name}`, text: `${v.author} (${v.rating}★): ${v.text}`, go: "profile", tab: "reviews" }));
       const o = myOrg(); if (o && o.verified) n.push({ id: "ver-" + o.id, icon: "✅", title: "Tashkilotingiz tasdiqlandi", text: "Endi maskanlaringizda \"Tasdiqlangan\" belgisi ko'rinadi." });
     }
+    // Support: foydalanuvchiga admin javobi, adminga yangi murojaat
+    if (r !== "admin") myTickets().filter(t => t.status === "answered").forEach(t =>
+      n.push({ id: "tk-" + t.id + "-" + t.messages.length, icon: "🎧", title: "Support javob berdi: " + t.subject, text: t.messages[t.messages.length - 1].text, chat: t.id }));
+    if (r === "admin") S.tickets.filter(t => t.status === "open").forEach(t =>
+      n.push({ id: "tka-" + t.id + "-" + t.messages.length, icon: "📨", title: "Yangi murojaat: " + t.subject, text: `${t.name}: ${t.messages[t.messages.length - 1].text}`, chat: t.id, important: true }));
     if (r === "admin") S.orgs.filter(o => !o.verified).forEach(o => n.push({ id: "org-" + o.id, icon: "🏢", title: "Tashkilot tasdiqlashni kutmoqda", text: o.name, go: "profile", tab: "dash" }));
     if (r === "admin" || r === "analyst") {
       const day = S.aiLogs.filter(l => l.ts > Date.now() - 86400000), runs = day.filter(l => l.kind === "run").length;
@@ -1011,6 +1251,7 @@
     const k = notifications().filter(x => x.unread).length;
     b.querySelector(".count").textContent = k > 9 ? "9+" : k;
     b.classList.toggle("has", k > 0);
+    const f = $("#chatfab"); if (f) f.classList.toggle("has", role() === "admin" ? S.tickets.some(t => t.status === "open") : myTickets().some(t => t.status === "answered"));
   }
   function openBell() {
     const list = notifications();
@@ -1029,6 +1270,7 @@
       if (e.target.closest("[data-update]")) return doUpdate();
       if (e.target.closest("[data-check]")) { toast("Tekshirilmoqda..."); return checkUpdate().then(() => { close(); setTimeout(openBell, 320); if (!latest) toast("Server bilan aloqa yo'q"); }); }
       const it = e.target.closest("[data-nid]"); const x = it && list.find(n => n.id === it.dataset.nid);
+      if (x && x.chat) { close(); openTicket = x.chat; openChat("support"); return; }
       if (x && x.go) { if (x.tab) { orgTab = x.tab; devTab = x.tab; } close(); go(x.go); }
     };
     track("bell_open", current.split("/")[0], { count: list.length });

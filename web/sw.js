@@ -1,6 +1,6 @@
 // Service worker: sayt internetsiz ham ochiladi va yangi versiya chiqqanda yangilanadi.
 // Strategiya — "avval tarmoq": internet bo'lsa har doim yangi fayl olinadi, bo'lmasa keshdagisi beriladi.
-const CACHE = "sayohatchi-v2";
+const CACHE = "sayohatchi-v3";
 const SHELL = ["./", "index.html", "app.js", "ai.js", "data.js", "config.js", "version.json", "manifest.webmanifest",
   "icon.png", "icon-192.png", "uz-regions.js", "vendor/leaflet/leaflet.js", "vendor/leaflet/leaflet.css"];
 

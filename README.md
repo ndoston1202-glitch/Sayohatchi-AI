@@ -15,6 +15,14 @@ Milliy AI Xakaton 2026, 22-muammo: dam olish maskanlarida reklama va real xizmat
 Analitik va Admin sifatida ro'yxatdan o'tish uchun maxfiy kod kerak (`ANALYST_CODE`, `ADMIN_CODE`). Oflayn demo kodlari: `analitik2026`, `admin2026`.
 Mehmonlar ro'yxatdan o'tmasdan qidirish, ko'rish va sharh yozishlari mumkin.
 
+## 💬 AI yordamchi va Support
+O'ng pastdagi logotipni bosing:
+- **🤖 AI yordamchi** — byudjet («3 mln so'mga 2 kishi 3 kunga qayerga?»), viloyat, maskan nomi, yo'nalish (basseyn, tog'...) bo'yicha javob beradi; javobdagi maskanni bosib sahifasiga o'tiladi. **Ko'p beriladigan savollar (FAQ)** — 10 ta tayyor javob.
+  - Serverda `ANTHROPIC_API_KEY` berilsa — **Claude AI** (`claude-opus-5-5`) platforma katalogiga tayanib javob beradi.
+  - Kalit bo'lmasa yoki oflayn bo'lsa — ilova ichidagi yordamchi ishlaydi.
+  - Har javobga 👍/👎 — Analitik panelidagi AI sifati hisobiga kiradi.
+- **🎧 Support** — mavzu tanlab murojaat qoldiriladi (mehmon ham, telefon/email bilan). Admin **Admin paneli → Support** da javob beradi yoki yopadi; javob chatda va 🔔 da chiqadi.
+
 ## 🔔 Bildirishnomalar va yangilanish
 Har bir ekranda o'ng yuqorida qo'ng'iroqcha bor:
 - **Yangi versiya** — serverdagi versiya ilovadagidan yangi bo'lsa ko'rinadi. "Hozir yangilash": web'da sahifa yangilanadi, ilovada yangi APK yuklab olinadi.
@@ -48,7 +56,7 @@ Sayt manzili: **https://ndoston1202-glitch.github.io/Sayohatchi-AI/**
 ```bash
 docker build -t sayohatchi .
 docker run -d --restart=always -p 8000:8000 -v sayohatchi-data:/data \
-  -e SECRET_KEY="$(openssl rand -hex 32)" -e ADMIN_CODE="admin-kodi" -e ANALYST_CODE="analitik-kodi" \\
+  -e SECRET_KEY="$(openssl rand -hex 32)" -e ADMIN_CODE="admin-kodi" -e ANALYST_CODE="analitik-kodi" -e ANTHROPIC_API_KEY="sk-ant-..." \\
   -v "$PWD/download:/app/download" sayohatchi
 ```
 So'ng `deploy/nginx.conf` dagi domenni o'zgartirib nginx'ga qo'ying va `certbot --nginx -d domen.uz` bilan HTTPS yoqing.
