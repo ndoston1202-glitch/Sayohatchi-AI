@@ -9,6 +9,7 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="format-detection" content="telephone=no">
 <title>Sayohatchi AI</title>
 <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
 <style>
@@ -255,6 +256,66 @@ details.add summary{list-style:none;text-align:center;margin-top:10px}details.ad
 .user-row{flex-wrap:wrap}
 @media (min-width:760px){#bell{top:18px;right:24px;background:#fff;color:var(--pri)}.sheet-wrap{align-items:flex-start;justify-content:flex-end;padding:72px 24px 0}.sheet{border-radius:20px;transform:translateY(-12px);opacity:0;transition:all .25s}.sheet-wrap.on .sheet{opacity:1}}
 .install{display:flex;align-items:center;gap:12px;background:linear-gradient(120deg,#dcfce7,#fef9c3)}.install .ic{font-size:30px}
+
+/* ---------- O'zbekiston xaritasi ---------- */
+.nomap-bg{background:radial-gradient(ellipse at 50% 40%,#f0fdf4 0%,#e0f2fe 100%)!important}
+.map-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.map-bar select{flex:1;min-width:180px}
+.map-bar .btn{white-space:nowrap}
+.map-wrap{position:relative}
+#map{height:62vh;height:clamp(320px,62svh,680px);min-height:320px}
+.map-title,.map-legend{position:absolute;z-index:500;left:10px;top:10px;background:rgba(255,255,255,.95);border-radius:12px;padding:8px 12px;box-shadow:0 4px 14px rgba(0,0,0,.12);font-size:13px;pointer-events:none;max-width:calc(100% - 70px)}
+.map-title{display:flex;flex-direction:column}.map-title span{color:var(--mut);font-size:12px}
+.map-legend{top:auto;bottom:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;color:var(--mut)}
+.map-legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:4px;vertical-align:-2px}
+.rlabel-wrap{background:none;border:0}
+.rlabel{transform:translate(-50%,-50%);white-space:nowrap;font-size:11px;font-weight:700;color:#14532d;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff;display:flex;align-items:center;gap:4px;pointer-events:none}
+.rlabel b{background:var(--pri);color:#fff;border-radius:10px;min-width:20px;height:20px;display:inline-grid;place-items:center;font-size:11px;padding:0 5px;text-shadow:none;box-shadow:0 2px 6px rgba(0,0,0,.25);animation:pop .5s ease}
+.leaflet-interactive{cursor:pointer;transition:fill-opacity .2s}
+.pop{min-width:200px}.pop-h{display:flex;gap:10px;align-items:center}.pop-e{font-size:28px}
+.pop .btn{padding:10px 14px;margin-top:2px}
+.leaflet-container{font-family:inherit;-webkit-tap-highlight-color:transparent}
+.leaflet-popup-content{margin:12px 14px!important}
+.minimap[data-go]{cursor:pointer}
+.map-list .card{margin:0 0 12px}
+
+/* ---------- Universal responsive ---------- */
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+img,svg,video,canvas{max-width:100%}
+.search input{flex:1;min-width:0}
+.search .btn{flex:none;white-space:nowrap}
+header h1{font-size:clamp(21px,6.2vw,38px);overflow-wrap:anywhere}
+header .brand{padding-right:54px}
+h1,h2,h3,b,.mut{overflow-wrap:anywhere}
+.row{min-width:0}
+.score-box{margin-top:6px;flex:none}
+input,select,textarea,button{font-size:16px} /* iOS'da maydon bosilganda kattalashib ketmasligi uchun */
+.tabs button,.chip,.map-chips button,.badge,nav button{font-size:13px}
+nav button{font-size:11px}
+@media (max-width:360px){
+  main{padding-left:12px;padding-right:12px}
+  header{padding-left:14px;padding-right:14px}
+  .stats-hero{gap:6px}.stats-hero b{font-size:19px}
+  .grid-form{grid-template-columns:1fr}
+  .cost{grid-template-columns:1fr}
+  nav{left:6px;right:6px}nav button{font-size:10px}
+  .rlabel{font-size:9px}
+}
+@media (max-width:520px){.rlabel:not(.has){font-size:9px;opacity:.85}}
+/* Yotqizilgan telefon (past ekran): ixcham sarlavha, menyu tepada */
+@media (orientation:landscape) and (max-height:500px){
+  header{padding-bottom:40px}header h1{font-size:22px;margin:8px 0}
+  .scene{height:70px}
+  #map,#map.country{height:72svh;min-height:220px}
+}
+@media (orientation:landscape) and (max-height:500px) and (max-width:759px){nav{bottom:6px}nav button{padding:5px 0 4px}}
+@media (orientation:landscape) and (max-height:500px) and (min-width:760px){body{padding-top:62px}nav{top:8px;bottom:auto}nav button{padding:8px 14px}#bell{top:10px}}
+/* Butun mamlakat: O'zbekiston eniga cho'zilgan — balandlikni enga moslash */
+#map.country{height:min(62svh,78vw);min-height:260px}
+@media (min-width:760px){#map{height:clamp(420px,70svh,720px)}#map.country{height:min(70svh,60vw)}.map-list{display:grid;grid-template-columns:1fr 1fr;gap:12px}}
+@media (min-width:1100px){.map-list{grid-template-columns:repeat(3,1fr)}}
+@media (hover:hover){.res:hover{transform:translateY(-3px)}}
+@media (hover:none){.res:hover{transform:none}}
 </style>
 </head>
 <body>
@@ -263,6 +324,7 @@ details.add summary{list-style:none;text-align:center;margin-top:10px}details.ad
 <div class="toast" id="toast"></div>
 <script src="vendor/leaflet/leaflet.js"></script>
 <script src="config.js"></script>
+<script src="uz-regions.js"></script>
 <script src="data.js"></script>
 <script src="ai.js"></script>
 <script src="app.js"></script>

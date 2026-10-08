@@ -1,11 +1,11 @@
 {
-  "version": "2.1.0",
+  "version": "2.2.0",
   "date": "2026-10-08",
   "apk": "download/Sayohatchi-AI.apk",
   "notes": [
-    "4 xil hisob: Sayohatchi, Tashkilot, Analitik va Admin",
-    "Admin paneli: foydalanuvchilarni bloklash, rolni o'zgartirish, tashkilotlarni tasdiqlash",
-    "🔔 Qo'ng'iroqcha: bildirishnomalar va ilovani yangilash",
-    "Byudjet bo'yicha AI sayohat rejasi va sayohatlar tarixi"
+    "🗺 O'zbekiston xaritasi: viloyatni bosing — undagi maskanlar ko'rinadi",
+    "Maskan ustiga bosing — «Batafsil» tugmasi bilan ma'lumot",
+    "Xarita internetsiz ham ishlaydi",
+    "Telefon, planshet va kompyuterda bexato ochiladigan dizayn"
   ]
 }

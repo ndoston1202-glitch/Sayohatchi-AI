@@ -9,9 +9,10 @@
   const uid = p => (p || "") + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const PLATFORM = /[?&]app=1/.test(location.search) || /; wv\)/.test(navigator.userAgent) ? "app" : "web";
   const API = (window.SAYOHATCHI_API || "").replace(/\/$/, "");
-  const APP_VERSION = "2.1.0";
+  const APP_VERSION = "2.2.0";
   // Ilova ichidagi "Nima yangi" — oflayn ham ko'rinadi
   const CHANGELOG = [
+    { v: "2.2.0", notes: ["🗺 O'zbekiston xaritasi: viloyatni bosing — undagi maskanlar chiqadi", "Maskanni bosing — «Batafsil» tugmasi", "Xarita internetsiz ham ishlaydi", "Barcha qurilmalarga moslashuvchan dizayn"] },
     { v: "2.1.0", notes: ["4 xil hisob: Sayohatchi, Tashkilot, Analitik va Admin", "Admin paneli: bloklash, rol berish, tashkilotlarni tasdiqlash", "🔔 Qo'ng'iroqcha: bildirishnomalar va yangilanishlar"] },
     { v: "2.0.0", notes: ["Yashil tabiat dizayni va animatsiyalar", "Xarita", "Byudjet bo'yicha AI sayohat rejasi", "Analitika va AI sifati monitoringi"] }
   ];
@@ -215,35 +216,69 @@
     b.appendChild(s); setTimeout(() => s.remove(), 650);
   });
 
-  // ---------- Xarita ----------
+  // ---------- Xarita: O'zbekiston viloyatlari (internetsiz ishlaydi) ----------
   let maps = [];
+  const REGIONS = (window.UZ_REGIONS && UZ_REGIONS.features) || [];
   const pinIcon = (bg, txt, delay) => L.divIcon({ className: "pin-wrap", iconSize: [42, 42], iconAnchor: [21, 42], popupAnchor: [0, -38],
     html: `<div class="pin" style="background:${bg};animation-delay:${delay || 0}ms"><span>${txt}</span></div>` });
+  // Nuqta qaysi viloyatda ekanini aniqlash (ray casting)
+  function inRing(x, y, ring) { let ins = false; for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i], [xj, yj] = ring[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) ins = !ins; } return ins; }
+  function regionAt(lat, lng) {
+    for (const f of REGIONS) { const polys = f.geometry.type === "Polygon" ? [f.geometry.coordinates] : f.geometry.coordinates;
+      if (polys.some(p => inRing(lng, lat, p[0]))) return f.properties.name; }
+    return null;
+  }
+  const regionOf = r => (r.lat != null && regionAt(+r.lat, +r.lng)) || r.region || "—";
+  const resortsIn = name => S.resorts.filter(r => regionOf(r) === name);
+  const UZ_BOUNDS = [[37.1, 55.9], [45.6, 73.2]];
+
+  function popupHtml(r) {
+    return `<div class="pop"><div class="pop-h"><span class="pop-e">${r.emoji || "🏞️"}</span><div><b>${esc(r.name)}</b><div class="mut">📍 ${esc(r.district)}</div></div></div>
+      <div class="chips" style="margin:8px 0"><span class="badge ${cls(r.trust)}">Trust ${r.trust == null ? "—" : r.trust}</span><span class="badge n">⭐ ${(+r.rating || 0).toFixed(1)}</span>${r.price ? `<span class="badge n">${som(r.price)}</span>` : ""}</div>
+      <button class="btn full" data-go="resort/${r.id}">Batafsil →</button></div>`;
+  }
+  // opts: mini (kichik, harakatsiz), tiles (ko'cha xaritasi — joy tanlash uchun), center/zoom, regions (viloyatlarni chizish)
   function makeMap(el, list, opts) {
     if (!el) return null;
     if (!window.L) { el.innerHTML = `<div class="offline">Xarita kutubxonasi yuklanmadi.</div>`; return null; }
-    const m = L.map(el, { zoomControl: !opts.mini, attributionControl: !opts.mini, scrollWheelZoom: !opts.mini, zoomAnimation: !opts.mini });
-    let failed = 0;
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
-      { maxZoom: 18, subdomains: "abcd", attribution: "&copy; OpenStreetMap, &copy; CARTO" }).addTo(m)
-      .on("tileerror", () => { if (++failed === 3) { const n = document.createElement("div"); n.className = "offline"; n.textContent = "🌐 Xarita fonini ko'rish uchun internet kerak. Maskan belgilari ko'rinib turibdi."; el.appendChild(n); } });
+    const m = L.map(el, { zoomControl: !opts.mini, attributionControl: !!opts.tiles, scrollWheelZoom: !opts.mini, dragging: !opts.mini,
+      doubleClickZoom: !opts.mini, touchZoom: !opts.mini, boxZoom: false, keyboard: !opts.mini, zoomSnap: 0.25, zoomAnimation: !opts.mini, tap: !opts.mini });
+    if (opts.tiles) {
+      let failed = 0;
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", { maxZoom: 18, subdomains: "abcd", attribution: "&copy; OpenStreetMap, &copy; CARTO" }).addTo(m)
+        .on("tileerror", () => { if (++failed === 3) { const n = document.createElement("div"); n.className = "offline"; n.textContent = "🌐 Ko'cha xaritasi uchun internet kerak — viloyat chegaralari bo'yicha belgilang."; el.appendChild(n); } });
+    } else el.classList.add("nomap-bg");
+    const geo = L.geoJSON(window.UZ_REGIONS || { type: "FeatureCollection", features: [] }, {
+      interactive: !!opts.onRegion,
+      style: f => opts.regionStyle ? opts.regionStyle(f) : { color: "#ffffff", weight: 1.2, fillColor: "#86efac", fillOpacity: opts.tiles ? 0.12 : 0.85 }
+    }).addTo(m);
+    if (opts.onRegion) geo.eachLayer(l => {
+      l.on("click", () => opts.onRegion(l.feature.properties.name, l));
+      l.on("mouseover", () => { if (!l._sel) l.setStyle({ fillOpacity: 1, weight: 2.5 }); });
+      l.on("mouseout", () => geo.resetStyle(l));
+    });
     const pts = [];
     list.forEach((r, i) => {
       if (r.lat == null || r.lng == null) return;
-      const mk = L.marker([r.lat, r.lng], { icon: pinIcon(color(r.trust), r.trust == null ? "—" : r.trust, i * 90) }).addTo(m);
-      if (!opts.mini) mk.bindPopup(`<b>${r.emoji || ""} ${esc(r.name)}</b><br><span class="mut">${esc(r.district)} · ⭐ ${(+r.rating || 0).toFixed(1)}${r.price ? " · " + som(r.price) : ""}</span><br>
-        <span class="badge ${cls(r.trust)}" style="margin:6px 0">Trust Score: ${r.trust == null ? "—" : r.trust}</span><br><a href="#" data-go="resort/${r.id}" style="color:#16a34a;font-weight:700">Batafsil →</a>`);
+      const mk = L.marker([r.lat, r.lng], { icon: pinIcon(color(r.trust), r.trust == null ? "—" : r.trust, i * 90), interactive: !opts.mini }).addTo(m);
+      if (!opts.mini) mk.bindPopup(popupHtml(r), { maxWidth: 260, minWidth: 210, autoPanPadding: [20, 70] });
       pts.push([r.lat, r.lng]);
     });
-    // animate:false — ekran almashganda o'chirilgan xaritada animatsiya xatosi chiqmasligi uchun
-    if (opts.center) m.setView(opts.center, opts.zoom || 7, { animate: false });
-    else if (pts.length === 1) m.setView(pts[0], opts.mini ? 11 : 12, { animate: false });
-    else if (pts.length) m.fitBounds(pts, { padding: [40, 40], animate: false });
-    else m.setView([41.3, 64.5], 5, { animate: false });
-    maps.push(m); setTimeout(() => { if (maps.includes(m)) m.invalidateSize({ animate: false }); }, 250);
+    const fit = () => {
+      if (opts.center) m.setView(opts.center, opts.zoom || 7, { animate: false });
+      else if (opts.fitAll || !pts.length) m.fitBounds(UZ_BOUNDS, { padding: [8, 8], animate: false });
+      else if (pts.length === 1) m.setView(pts[0], opts.mini ? 9 : 11, { animate: false });
+      else m.fitBounds(pts, { padding: [40, 40], animate: false, maxZoom: 10 });
+    };
+    fit(); m._geo = geo; m._refit = fit;
+    maps.push(m);
+    // Konteyner o'lchami o'zgarsa (telefon burilishi, oyna) — qayta moslash
+    setTimeout(() => { if (maps.includes(m)) { m.invalidateSize({ animate: false }); m._refit(); } }, 200);
     return m;
   }
-  // Leaflet popup ichidagi "Batafsil" havolasi
+  window.addEventListener("resize", () => { clearTimeout(window._rz); window._rz = setTimeout(() => maps.forEach(m => { try { m.invalidateSize({ animate: false }); m._refit && m._refit(); } catch (e) {} }), 150); });
+  // Popup ichidagi "Batafsil" tugmasi
   document.addEventListener("click", e => { const a = e.target.closest(".leaflet-popup [data-go]"); if (a) { e.preventDefault(); go(a.dataset.go); } });
 
   // ---------- Ekranlar ----------
@@ -266,22 +301,61 @@
       <div class="carousel">${top.map((r, i) => `<div class="feat reveal" data-go="resort/${r.id}" style="background:linear-gradient(150deg,${grads[i % 4]})">
         <span class="big">${r.emoji || "🏞️"}</span><span class="sc">★ ${r.trust == null ? "—" : r.trust}</span><h3>${esc(r.name)}</h3><div style="opacity:.85;font-size:13px">📍 ${esc(r.district)}</div></div>`).join("")}</div>
       <div class="sec-title">🗺️ Xaritada <a data-go="map">To'liq xarita →</a></div>
-      <div class="minimap reveal" id="hmap"></div>
+      <div class="minimap reveal" id="hmap" data-go="map" role="link" aria-label="To'liq xaritani ochish"></div>
       <div class="sec-title">✨ Platforma kimlar uchun?</div><div class="how">
       <div class="card reveal"><div class="ic">🧳</div><div><h3>Mijozlar</h3><div class="mut">Ishonchli maskanlarni toping, sayohatlaringizni yozib boring va byudjet bo'yicha AI tavsiyasini oling.</div></div></div>
       <div class="card reveal"><div class="ic">🏨</div><div><h3>Tashkilotlar</h3><div class="mut">Maskaningizni qo'shing, ma'lumotlarni yangilang, sharhlarga javob bering va Trust Score'ingizni kuzating.</div></div></div>
       <div class="card reveal"><div class="ic">🛡️</div><div><h3>Ishonch</h3><div class="mut">AI shubhali sharhlarni belgilaydi, reklama va real rasmni solishtiradi — 0–100 oralig'ida yagona baho.</div></div></div></div>
       <p class="mut" style="text-align:center;margin-top:18px">AI natijalari yakuniy haqiqat emas, ehtimoliy tahlil va tavsiya.</p></main>`;
   };
-  views.home.bind = () => { $("#hs").onsubmit = e => { e.preventDefault(); go("search/" + encodeURIComponent($("#hq").value)); }; makeMap($("#hmap"), S.resorts, { mini: true }); };
+  views.home.bind = () => { $("#hs").onsubmit = e => { e.preventDefault(); go("search/" + encodeURIComponent($("#hq").value)); }; makeMap($("#hmap"), S.resorts, { mini: true, fitAll: true }); };
 
-  let mapFilter = "all";
-  views.map = () => `${hdr("🗺️", "Maskanlar xaritasi")}
-    <main><div class="map-chips">${[["all", "Barchasi"], ["g", "🟢 Ishonchli (75+)"], ["y", "🟡 O'rtacha"], ["r", "🔴 Past"]].map(([k, l]) =>
-      `<button class="${mapFilter === k ? "on" : ""}" data-mf="${k}">${l}</button>`).join("")}</div><div id="map"></div></main>`;
+  // To'liq xarita: viloyat bosiladi → o'sha viloyat maskanlari, maskan bosiladi → "Batafsil"
+  let mapRegion = null;
+  const shortName = n => n.replace(" viloyati", "").replace(" Respublikasi", "");
+  views.map = () => {
+    const counts = {}; S.resorts.forEach(r => { const k = regionOf(r); counts[k] = (counts[k] || 0) + 1; });
+    const list = mapRegion ? resortsIn(mapRegion).sort((a, b) => (b.trust || 0) - (a.trust || 0)) : [];
+    const names = REGIONS.map(f => f.properties.name).sort((a, b) => a.localeCompare(b));
+    return `${hdr("🗺️", "O'zbekiston xaritasi", mapRegion ? "" : "Viloyatni bosing — undagi dam olish maskanlari ko'rinadi")}
+    <main><div class="map-bar">${mapRegion ? `<button class="btn sec" id="mall">← Butun O'zbekiston</button>` : ""}
+      <select id="mreg" aria-label="Viloyatni tanlang"><option value="">🗺 Viloyatni tanlang</option>${names.map(n => `<option ${n === mapRegion ? "selected" : ""} value="${esc(n)}">${esc(shortName(n))}${counts[n] ? ` (${counts[n]})` : ""}</option>`).join("")}</select></div>
+      <div class="map-wrap"><div id="map" class="${mapRegion ? "region" : "country"}"></div>${mapRegion ? `<div class="map-title"><b>${esc(mapRegion)}</b><span>${list.length} ta maskan</span></div>` : `<div class="map-legend"><span><i style="background:#bbf7d0"></i>0</span><span><i style="background:#4ade80"></i>1–2</span><span><i style="background:#16a34a"></i>3+</span> maskan</div>`}</div>
+      ${mapRegion ? (list.length ? `<div class="sec-title">📍 ${esc(shortName(mapRegion))}dagi maskanlar</div><div class="grid2 map-list">${list.map(resortCard).join("")}</div>`
+        : `<div class="card mut reveal" style="text-align:center">🌱 Bu hududda hozircha maskan yo'q. Tashkilotlar o'z maskanini qo'shishi mumkin.</div>`) : ""}</main>`;
+  };
   views.map.bind = () => {
-    $$("[data-mf]").forEach(b => b.onclick = () => { mapFilter = b.dataset.mf; render(); });
-    makeMap($("#map"), S.resorts.filter(r => mapFilter === "all" || cls(r.trust) === mapFilter), {});
+    const counts = {}; S.resorts.forEach(r => { const k = regionOf(r); counts[k] = (counts[k] || 0) + 1; });
+    const fillFor = n => { const c = counts[n] || 0; return c >= 3 ? "#16a34a" : c >= 1 ? "#4ade80" : "#bbf7d0"; };
+    const list = mapRegion ? resortsIn(mapRegion) : [];
+    const pick = name => { mapRegion = name; track("map_region", "map", { region: name, count: (counts[name] || 0) }); render(); };
+    const m = makeMap($("#map"), list, {
+      fitAll: !mapRegion,
+      onRegion: (name) => pick(name === mapRegion ? null : name),
+      regionStyle: f => { const n = f.properties.name, sel = n === mapRegion;
+        return mapRegion ? { color: sel ? "#0f5132" : "#ffffff", weight: sel ? 3 : 1, fillColor: sel ? "#dcfce7" : "#e5e7eb", fillOpacity: sel ? 0.9 : 0.6 }
+          : { color: "#ffffff", weight: 1.5, fillColor: fillFor(n), fillOpacity: 0.9 }; }
+    });
+    if (m) {
+      // Viloyat nomi va maskanlar soni yorlig'i
+      if (!mapRegion) m._geo.eachLayer(l => { const n = l.feature.properties.name, c = counts[n] || 0, bb = l.getBounds();
+        if (!c && bb.getNorth() - bb.getSouth() < 0.6) return; // juda kichik hudud (Toshkent shahri) — yorliq boshqasini yopmasin
+        L.marker(l.getBounds().getCenter(), { interactive: false, icon: L.divIcon({ className: "rlabel-wrap", iconSize: null,
+          html: `<div class="rlabel ${c ? "has" : ""}">${esc(shortName(n))}${c ? `<b>${c}</b>` : ""}</div>` }) }).addTo(m); });
+      if (mapRegion) {
+        m._geo.eachLayer(l => { if (l.feature.properties.name === mapRegion) { l._sel = true; l.bringToFront(); } });
+        // Viloyatga moslash; maskanlar ustma-ust tushsa — ular ajralib ko'rinadigan darajada yaqinlashtirish
+        m._refit = () => {
+          m._geo.eachLayer(l => { if (l._sel) m.fitBounds(l.getBounds(), { padding: [24, 24], animate: false }); });
+          const pts = list.filter(r => r.lat != null).map(r => m.latLngToContainerPoint([r.lat, r.lng]));
+          const close = pts.some((p, i) => pts.some((q, j) => j > i && p.distanceTo(q) < 46));
+          if (close) m.fitBounds(list.map(r => [r.lat, r.lng]), { padding: [60, 60], maxZoom: 12, animate: false });
+        };
+        m._refit();
+      }
+    }
+    $("#mreg").onchange = e => pick(e.target.value || null);
+    if ($("#mall")) $("#mall").onclick = () => pick(null);
   };
 
   views.search = (q) => {
@@ -689,7 +763,7 @@
   function resortsManagerBind() {
     if ($("#pickmap")) {
       const r = editing ? resort(editing) : null; let pos = r && r.lat != null ? [+r.lat, +r.lng] : null, img = r ? r.adImage : null, mk = null;
-      const m = makeMap($("#pickmap"), [], { center: pos || [41.3, 66.5], zoom: pos ? 11 : 6 });
+      const m = makeMap($("#pickmap"), [], { tiles: true, center: pos || [41.3, 64.5], zoom: pos ? 11 : 5.5 });
       const setPos = ll => { pos = [ll.lat, ll.lng]; $("#coords").textContent = `${ll.lat.toFixed(4)}, ${ll.lng.toFixed(4)}`;
         if (mk) mk.setLatLng(ll); else mk = L.marker(ll, { icon: pinIcon("#16a34a", "📍") }).addTo(m); };
       if (m) { if (pos) setPos({ lat: pos[0], lng: pos[1] }); m.on("click", e => setPos(e.latlng)); }
