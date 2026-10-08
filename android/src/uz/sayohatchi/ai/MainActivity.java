@@ -29,7 +29,10 @@ public class MainActivity extends Activity {
         web.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
-                return !"file".equals(r.getUrl().getScheme());
+                // Ilova ichidagi sahifalar WebView'da, tashqi havolalar (tel:, sayt) tizim ilovasida ochiladi
+                if ("file".equals(r.getUrl().getScheme())) return false;
+                try { startActivity(new Intent(Intent.ACTION_VIEW, r.getUrl())); } catch (Exception e) { }
+                return true;
             }
         });
         web.setWebChromeClient(new WebChromeClient() {
@@ -51,7 +54,7 @@ public class MainActivity extends Activity {
         });
         setContentView(web);
         if (state != null) web.restoreState(state);
-        else web.loadUrl("file:///android_asset/index.html");
+        else web.loadUrl("file:///android_asset/index.html?app=1");
     }
 
     @Override

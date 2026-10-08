@@ -1,16 +1,16 @@
 // Demo ma'lumotlar: maskanlar va sharhlar (MVP uchun admin tomonidan kiritilgan deb hisoblanadi)
 window.DEMO_RESORTS = [
-  { id: 1, name: "Chimyon Tog' Resort", region: "Toshkent viloyati", district: "Bo'stonliq", address: "Chimyon qishlog'i", rating: 4.6,
+  { id: 1, price: 650000, food: 120000, tags: ["tog'","tabiat","oila","basseyn"], owner: "system", lat: 41.5536, lng: 70.017, emoji: "🏔️", name: "Chimyon Tog' Resort", region: "Toshkent viloyati", district: "Bo'stonliq", address: "Chimyon qishlog'i", rating: 4.6,
     adText: "Tog' bag'rida 5 yulduzli dam olish: toza havo, isitiladigan basseyn, yangi ta'mirlangan xonalar va milliy taomlar." },
-  { id: 2, name: "Charvak Lazur Hotel", region: "Toshkent viloyati", district: "Bo'stonliq", address: "Charvak suv ombori qirg'og'i", rating: 4.2,
+  { id: 2, price: 900000, food: 150000, tags: ["suv","tabiat","dam olish"], owner: "system", lat: 41.626, lng: 70.057, emoji: "🌊", name: "Charvak Lazur Hotel", region: "Toshkent viloyati", district: "Bo'stonliq", address: "Charvak suv ombori qirg'og'i", rating: 4.2,
     adText: "Charvak qirg'og'idagi premium mehmonxona: shaxsiy plyaj, keng xonalar, xalqaro oshxona." },
-  { id: 3, name: "Zomin Sanatoriyasi", region: "Jizzax viloyati", district: "Zomin", address: "Zomin milliy bog'i", rating: 4.4,
+  { id: 3, price: 450000, food: 90000, tags: ["tabiat","sog'lomlashtirish","tinch"], owner: "system", lat: 39.648, lng: 68.556, emoji: "🌲", name: "Zomin Sanatoriyasi", region: "Jizzax viloyati", district: "Zomin", address: "Zomin milliy bog'i", rating: 4.4,
     adText: "Archazorlar orasida sog'lomlashtirish markazi: shifobaxsh muolajalar, parhez taomlar, tinch muhit." },
-  { id: 4, name: "Amirsoy Mountain Resort", region: "Toshkent viloyati", district: "Bo'stonliq", address: "Amirsoy", rating: 4.7,
+  { id: 4, price: 1500000, food: 200000, tags: ["tog'","sport","SPA"], owner: "system", lat: 41.488, lng: 70.226, emoji: "⛷️", name: "Amirsoy Mountain Resort", region: "Toshkent viloyati", district: "Bo'stonliq", address: "Amirsoy", rating: 4.7,
     adText: "Zamonaviy tog'-chang'i kurorti: shale uylari, SPA, restoranlar va professional xodimlar." },
-  { id: 5, name: "Buxoro Oasis Guest House", region: "Buxoro viloyati", district: "Buxoro shahri", address: "Eski shahar", rating: 3.9,
+  { id: 5, price: 300000, food: 80000, tags: ["tarix","madaniyat","shahar"], owner: "system", lat: 39.774, lng: 64.418, emoji: "🕌", name: "Buxoro Oasis Guest House", region: "Buxoro viloyati", district: "Buxoro shahri", address: "Eski shahar", rating: 3.9,
     adText: "Tarixiy markazda milliy uslubdagi mehmonxona: hovli, nonushta kiritilgan, arzon narx." },
-  { id: 6, name: "Beldersoy Dam Olish Uyi", region: "Toshkent viloyati", district: "Bo'stonliq", address: "Beldersoy", rating: 3.6,
+  { id: 6, price: 350000, food: 90000, tags: ["oila","basseyn","tabiat"], owner: "system", lat: 41.5, lng: 70.15, emoji: "🏕️", name: "Beldersoy Dam Olish Uyi", region: "Toshkent viloyati", district: "Bo'stonliq", address: "Beldersoy", rating: 3.6,
     adText: "Oilaviy dam olish uchun ideal: katta basseyn, bolalar maydonchasi, mazali ovqatlar." }
 ];
 
@@ -55,3 +55,9 @@ window.DEMO_REVIEWS = [
   [6, "Munisa", 4, "Tabiat zo'r, havo toza, xodimlar yaxshi. Narxi arzon.", "2026-08-01"],
   [6, "Hasan", 2, "Xizmat yomon, tozalik past. Narxiga arzimaydi.", "2026-08-09"]
 ];
+
+// Shaharlar (sayohat boshlanadigan joy) — transport xarajatini hisoblash uchun
+window.CITIES = { "Toshkent": [41.311, 69.279], "Samarqand": [39.654, 66.959], "Buxoro": [39.768, 64.421], "Jizzax": [40.115, 67.842],
+  "Andijon": [40.783, 72.344], "Farg'ona": [40.389, 71.783], "Namangan": [40.998, 71.672], "Qarshi": [38.861, 65.789],
+  "Termiz": [37.224, 67.278], "Navoiy": [40.103, 65.374], "Urganch": [41.550, 60.631], "Nukus": [42.460, 59.603], "Guliston": [40.489, 68.784] };
+window.INTERESTS = ["tabiat", "tog'", "suv", "oila", "basseyn", "tarix", "madaniyat", "sport", "SPA", "sog'lomlashtirish", "tinch", "shahar"];

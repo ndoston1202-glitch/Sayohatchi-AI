@@ -8,7 +8,10 @@ OUT="$ROOT/build"; A="$ROOT/android"
 rm -rf "$OUT"; mkdir -p "$OUT"/{res,gen,classes,dex}
 
 "$TOOLS/aapt2" compile --dir "$A/res" -o "$OUT/res/res.zip"
-"$TOOLS/aapt2" link -I "$TOOLS/android.jar" --manifest "$A/AndroidManifest.xml" -A "$ROOT/web" \
+# Ilova fayllari; API_URL berilsa ilova shu serverga ulanadi (aks holda oflayn rejim)
+cp -r "$ROOT/web" "$OUT/assets"
+[ -n "${API_URL:-}" ] && echo "window.SAYOHATCHI_API = \"$API_URL\";" > "$OUT/assets/config.js"
+"$TOOLS/aapt2" link -I "$TOOLS/android.jar" --manifest "$A/AndroidManifest.xml" -A "$OUT/assets" \
   --java "$OUT/gen" -o "$OUT/unsigned.apk" "$OUT/res/res.zip"
 
 javac -nowarn --release 8 -cp "$TOOLS/all.jar" -d "$OUT/classes" \

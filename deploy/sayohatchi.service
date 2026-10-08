@@ -1,0 +1,15 @@
+# systemd xizmati: /etc/systemd/system/sayohatchi.service
+[Unit]
+Description=Sayohatchi AI
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/sayohatchi
+Environment=SECRET_KEY=BU_YERGA_UZUN_TASODIFIY_KALIT
+Environment=DEV_CODE=BU_YERGA_DASTURCHI_KODI
+Environment=DB_PATH=/opt/sayohatchi/data/sayohatchi.db
+ExecStart=/opt/sayohatchi/venv/bin/uvicorn server.main:app --host 127.0.0.1 --port 8000 --proxy-headers
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
