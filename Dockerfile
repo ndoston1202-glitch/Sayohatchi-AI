@@ -5,6 +5,7 @@ COPY server/requirements.txt server/requirements.txt
 RUN pip install --no-cache-dir -r server/requirements.txt
 COPY server/ server/
 COPY web/ web/
+COPY download/ download/
 ENV DB_PATH=/data/sayohatchi.db
 VOLUME /data
 EXPOSE 8000

@@ -9,7 +9,14 @@
   const uid = p => (p || "") + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const PLATFORM = /[?&]app=1/.test(location.search) || /; wv\)/.test(navigator.userAgent) ? "app" : "web";
   const API = (window.SAYOHATCHI_API || "").replace(/\/$/, "");
-  const ROLE_NAMES = { client: "Mijoz", org: "Tashkilot", developer: "Dasturchi", guest: "Mehmon" };
+  const APP_VERSION = "2.1.0";
+  // Ilova ichidagi "Nima yangi" — oflayn ham ko'rinadi
+  const CHANGELOG = [
+    { v: "2.1.0", notes: ["4 xil hisob: Sayohatchi, Tashkilot, Analitik va Admin", "Admin paneli: bloklash, rol berish, tashkilotlarni tasdiqlash", "🔔 Qo'ng'iroqcha: bildirishnomalar va yangilanishlar"] },
+    { v: "2.0.0", notes: ["Yashil tabiat dizayni va animatsiyalar", "Xarita", "Byudjet bo'yicha AI sayohat rejasi", "Analitika va AI sifati monitoringi"] }
+  ];
+  const ROLE_NAMES = { client: "Sayohatchi", org: "Tashkilot", analyst: "Analitik", admin: "Admin", guest: "Mehmon" };
+  const OFFLINE_CODES = { analyst: "analitik2026", admin: "admin2026" }; // faqat oflayn demo; serverda ANALYST_CODE / ADMIN_CODE
 
   // ---------- Holat ----------
   function seed() {
@@ -510,19 +517,19 @@
   }
   views.profile = () => {
     if (!S.user) {
-      const roles = [["client", "🧳", "Mijoz", "Sayohatchi"], ["org", "🏨", "Tashkilot", "Maskan egasi"], ["developer", "💻", "Dasturchi", "Analitika"]];
+      const roles = [["client", "🧳", "Sayohatchi", "Dam oluvchi"], ["org", "🏨", "Tashkilot", "Maskan egasi"], ["analyst", "📈", "Analitik", "Statistika"], ["admin", "🛡️", "Admin", "Boshqaruv"]];
       return `${hdr("👤", "Kirish")}<main><div class="card reveal"><h2>Kim sifatida kirasiz?</h2>
         <div class="roles">${roles.map(([k, ic, t, d]) => `<button class="role ${authRole === k ? "on" : ""}" data-role="${k}"><span>${ic}</span><b>${t}</b><small>${d}</small></button>`).join("")}</div>
         <div class="tabs" style="box-shadow:none;background:#f3f8f4;margin-top:14px"><button class="${authMode === "login" ? "on" : ""}" data-am="login">Kirish</button><button class="${authMode === "reg" ? "on" : ""}" data-am="reg">Ro'yxatdan o'tish</button></div>
         ${authMode === "reg" ? field("an", authRole === "org" ? "Mas'ul shaxs ismi" : "Ism", "") : ""}
         ${field("ae", "Email", "", "email")}${field("ap", "Parol (kamida 6 belgi)", "", "password")}
-        ${authMode === "reg" && authRole === "developer" ? field("adc", "Dasturchi kodi", "", "password") : ""}
+        ${authMode === "reg" && OFFLINE_CODES[authRole] ? field("adc", ROLE_NAMES[authRole] + " kirish kodi", "", "password") : ""}
         <button class="btn full" style="margin-top:12px" id="ago">${authMode === "login" ? "Kirish" : "Ro'yxatdan o'tish"}</button>
-        <p class="mut">${online ? "🟢 Server bilan ulangan" : "⚪ Oflayn rejim: ma'lumotlar shu qurilmada saqlanadi"}${authRole === "developer" && !online && authMode === "reg" ? " · Demo dasturchi kodi: dev2026" : ""}</p></div>
+        <p class="mut">${online ? "🟢 Server bilan ulangan" : "⚪ Oflayn rejim: ma'lumotlar shu qurilmada saqlanadi"}${OFFLINE_CODES[authRole] && !online && authMode === "reg" ? ` · Demo kod: ${OFFLINE_CODES[authRole]}` : ""}</p></div>
         ${S.saved.length ? `<div class="sec-title">💚 Saqlanganlar</div>${S.resorts.filter(r => S.saved.includes(String(r.id))).map(resortCard).join("")}` : ""}</main>`;
     }
     if (role() === "org") return orgCabinet();
-    if (role() === "developer") return devPanel();
+    if (role() === "analyst" || role() === "admin") return devPanel();
     return clientCabinet();
   };
   views.profile.bind = () => {
@@ -534,26 +541,28 @@
       if (authMode === "reg" && name.length < 2) return toast("Ismni kiriting");
       try {
         if (online) {
-          const res = await api(`/api/v1/auth/${authMode === "login" ? "login" : "register"}`, { method: "POST", body: { email, password: pw, name, role: authRole, devCode: $("#adc") ? $("#adc").value : "" } });
+          const res = await api(`/api/v1/auth/${authMode === "login" ? "login" : "register"}`, { method: "POST", body: { email, password: pw, name, role: authRole, code: $("#adc") ? $("#adc").value : "" } });
           S.token = res.token; S.user = res.user;
         } else {
           const h = await sha(email + ":" + pw);
           if (authMode === "login") {
             const u = S.users.find(x => x.email === email && x.pw === h); if (!u) return toast("Email yoki parol noto'g'ri");
+            if (u.blocked) return toast("Hisobingiz bloklangan. Admin bilan bog'laning");
             S.user = { id: u.id, name: u.name, email: u.email, role: u.role };
           } else {
             if (S.users.some(x => x.email === email)) return toast("Bu email bilan ro'yxatdan o'tilgan");
-            if (authRole === "developer" && $("#adc").value !== "dev2026") return toast("Dasturchi kodi noto'g'ri");
+            if (OFFLINE_CODES[authRole] && $("#adc").value !== OFFLINE_CODES[authRole]) return toast("Kirish kodi noto'g'ri");
             const u = { id: uid("u"), name, email, pw: h, role: authRole, created: Date.now() }; S.users.push(u);
             S.user = { id: u.id, name, email, role: authRole };
           }
         }
+        devTab = null; orgTab = "dash"; devData = null; // har bir rol o'z bosh bo'limidan boshlaydi
         track(authMode === "login" ? "login" : "register", "profile", { role: S.user.role });
         save(); toast(`Xush kelibsiz, ${S.user.name}!`); if (online) syncFromServer(); render();
       } catch (e) { toast(e.message); }
     };
     if ($("#plogout")) $("#plogout").onclick = () => { track("logout", "profile"); S.user = null; S.token = null; devData = null; save(); render(); };
-    const b = role() === "org" ? orgBind : role() === "developer" ? devBind : role() === "client" ? clientBind : null;
+    const b = role() === "org" ? orgBind : (role() === "analyst" || role() === "admin") ? devBind : role() === "client" ? clientBind : null;
     b && b();
   };
 
@@ -563,7 +572,7 @@
     const spent = mine.reduce((s, v) => s + (+v.spent || 0), 0);
     const regions = new Set(mine.map(v => resort(v.resortId) && resort(v.resortId).region).filter(Boolean));
     const pr = S.profile;
-    return `${cabHdr("🧳", "Mijoz kabineti", S.user.name, `${esc(S.user.email)} · ${online ? "🟢 onlayn" : "oflayn"}`)}
+    return `${cabHdr("🧳", "Sayohatchi kabineti", S.user.name, `${esc(S.user.email)} · ${online ? "🟢 onlayn" : "oflayn"}`)}
       <main><div class="stats-hero"><div class="card reveal"><b data-count="${mine.length}">0</b><span class="mut">sayohat</span></div>
         <div class="card reveal"><b data-count="${regions.size}">0</b><span class="mut">viloyat</span></div>
         <div class="card reveal"><b style="font-size:15px">${som(spent)}</b><span class="mut">sarflangan</span></div></div>
@@ -629,21 +638,7 @@
           `<div class="card mut reveal">Hali maskan qo'shilmagan. "Maskanlarim" bo'limida qo'shing.</div>`}
         <div class="mut">Statistika: ${online ? "server ma'lumotlari" : "shu qurilmadagi faollik"} asosida.</div>`;
     } else if (orgTab === "resorts") {
-      const r = editing ? (resort(editing) || {}) : {};
-      body = `<div class="card reveal"><h2>${editing ? "✏️ Maskanni tahrirlash" : "＋ Yangi maskan qo'shish"}</h2>
-        ${field("rn", "Nomi", r.name)}<div class="grid-form">${field("rreg", "Viloyat", r.region)}${field("rdis", "Tuman", r.district)}</div>
-        ${field("raddr", "Manzil", r.address)}<div class="grid-form">${field("rpr", "Narx (1 kecha, so'm)", r.price, "number", 'min="0"')}${field("rfd", "Ovqat (1 kishi/kun)", r.food, "number", 'min="0"')}
-        ${field("rph", "Telefon", r.phone, "tel")}${field("remo", "Belgi (emoji)", r.emoji || "🏞️", "text", 'maxlength="4"')}</div>
-        <div class="mut" style="margin:8px 0 6px">Yo'nalishlar</div>${chipsOf("rtags", INTERESTS, r.tags)}
-        <label class="fl"><span>Reklama matni (va'dalaringiz)</span><textarea id="rad" maxlength="600">${esc(r.adText || "")}</textarea></label>
-        <label class="fl"><span>Batafsil tavsif</span><textarea id="rdesc" maxlength="1500">${esc(r.description || "")}</textarea></label>
-        <div class="mut" style="margin:8px 0 6px">📍 Joylashuv — xaritaga bosing</div><div class="minimap" id="pickmap" style="height:240px"></div>
-        <div class="mut" id="coords">${r.lat != null ? `${(+r.lat).toFixed(4)}, ${(+r.lng).toFixed(4)}` : "Tanlanmagan"}</div>
-        <div class="mut" style="margin:10px 0 6px">📣 Reklama rasmi</div><label class="imgbox" id="radbox" style="max-width:220px">${r.adImage ? `<img src="${r.adImage}">` : `<span class="plus">🖼</span><span>Rasm yuklash</span>`}<input type="file" accept="image/*" id="radimg"></label>
-        <div class="row" style="margin-top:12px"><button class="btn" id="rsave" style="flex:1">${editing ? "Saqlash" : "Qo'shish"}</button>${editing ? `<button class="btn sec" id="rcancel">Bekor qilish</button>` : ""}</div></div>
-        ${mine.map(x => `<div class="card reveal"><div class="row between"><b>${x.emoji || ""} ${esc(x.name)}</b><span class="badge ${cls(x.trust)}">${x.trust == null ? "—" : x.trust}</span></div>
-          <div class="mut">${esc(x.region)} · ${reviewsOf(x.id).length} sharh${x.price ? " · " + som(x.price) : ""}</div>
-          <div class="row" style="margin-top:8px;flex-wrap:wrap"><button class="btn sec" data-go="resort/${x.id}">Ko'rish</button><button class="btn sec" data-ed="${x.id}">Tahrirlash</button><button class="btn bad" data-dl="${x.id}">O'chirish</button></div></div>`).join("")}`;
+      body = resortsManager(mine);
     } else {
       const mineIds = mine.map(r => String(r.id));
       const revs = S.reviews.filter(v => mineIds.includes(String(v.resortId))).sort((a, b) => String(b.date).localeCompare(String(a.date)));
@@ -657,6 +652,24 @@
       <main><div class="tabs">${tabs.map(([k, l]) => `<button class="${k === orgTab ? "on" : ""}" data-otab="${k}">${l}</button>`).join("")}</div>${body}
       <button class="btn bad full" id="plogout" style="margin-top:6px">Chiqish</button></main>`;
   }
+  // Maskan qo'shish/tahrirlash formasi — tashkilot (o'z maskanlari) va admin (barcha maskanlar) uchun
+  function resortsManager(list) {
+      const r = editing ? (resort(editing) || {}) : {};
+      return `<div class="card reveal"><h2>${editing ? "✏️ Maskanni tahrirlash" : "＋ Yangi maskan qo'shish"}</h2>
+        ${field("rn", "Nomi", r.name)}<div class="grid-form">${field("rreg", "Viloyat", r.region)}${field("rdis", "Tuman", r.district)}</div>
+        ${field("raddr", "Manzil", r.address)}<div class="grid-form">${field("rpr", "Narx (1 kecha, so'm)", r.price, "number", 'min="0"')}${field("rfd", "Ovqat (1 kishi/kun)", r.food, "number", 'min="0"')}
+        ${field("rph", "Telefon", r.phone, "tel")}${field("remo", "Belgi (emoji)", r.emoji || "🏞️", "text", 'maxlength="4"')}</div>
+        <div class="mut" style="margin:8px 0 6px">Yo'nalishlar</div>${chipsOf("rtags", INTERESTS, r.tags)}
+        <label class="fl"><span>Reklama matni (va'dalaringiz)</span><textarea id="rad" maxlength="600">${esc(r.adText || "")}</textarea></label>
+        <label class="fl"><span>Batafsil tavsif</span><textarea id="rdesc" maxlength="1500">${esc(r.description || "")}</textarea></label>
+        <div class="mut" style="margin:8px 0 6px">📍 Joylashuv — xaritaga bosing</div><div class="minimap" id="pickmap" style="height:240px"></div>
+        <div class="mut" id="coords">${r.lat != null ? `${(+r.lat).toFixed(4)}, ${(+r.lng).toFixed(4)}` : "Tanlanmagan"}</div>
+        <div class="mut" style="margin:10px 0 6px">📣 Reklama rasmi</div><label class="imgbox" id="radbox" style="max-width:220px">${r.adImage ? `<img src="${r.adImage}">` : `<span class="plus">🖼</span><span>Rasm yuklash</span>`}<input type="file" accept="image/*" id="radimg"></label>
+        <div class="row" style="margin-top:12px"><button class="btn" id="rsave" style="flex:1">${editing ? "Saqlash" : "Qo'shish"}</button>${editing ? `<button class="btn sec" id="rcancel">Bekor qilish</button>` : ""}</div></div>
+        ${list.map(x => `<div class="card reveal"><div class="row between"><b>${x.emoji || ""} ${esc(x.name)}</b><span class="badge ${cls(x.trust)}">${x.trust == null ? "—" : x.trust}</span></div>
+          <div class="mut">${esc(x.region)} · ${reviewsOf(x.id).length} sharh${x.price ? " · " + som(x.price) : ""}</div>
+          <div class="row" style="margin-top:8px;flex-wrap:wrap"><button class="btn sec" data-go="resort/${x.id}">Ko'rish</button><button class="btn sec" data-ed="${x.id}">Tahrirlash</button><button class="btn bad" data-dl="${x.id}">O'chirish</button></div></div>`).join("")}`;
+  }
   function orgBind() {
     $$("[data-otab]").forEach(b => b.onclick = () => { orgTab = b.dataset.otab; editing = null; render(); });
     if ($("#osave")) $("#osave").onclick = () => {
@@ -667,6 +680,13 @@
         { name, inn, phone: $("#ophone").value.trim(), address: $("#oaddr").value.trim(), web: $("#oweb").value.trim(), about: $("#oabout").value.trim() });
       persist("orgs", o); track("org_save", "org"); toast("Tashkilot ma'lumotlari saqlandi"); orgTab = isNew ? "resorts" : "org"; render();
     };
+    resortsManagerBind();
+    $$("[data-sendreply]").forEach(b => b.onclick = () => {
+      const v = S.reviews.find(x => String(x.id) === b.dataset.sendreply); const t = document.querySelector(`[data-reply="${b.dataset.sendreply}"]`).value.trim();
+      persist("reviews", Object.assign({}, v, { orgReply: t })); track("org_reply", "org"); toast("Javob yuborildi");
+    });
+  }
+  function resortsManagerBind() {
     if ($("#pickmap")) {
       const r = editing ? resort(editing) : null; let pos = r && r.lat != null ? [+r.lat, +r.lng] : null, img = r ? r.adImage : null, mk = null;
       const m = makeMap($("#pickmap"), [], { center: pos || [41.3, 66.5], zoom: pos ? 11 : 6 });
@@ -683,17 +703,13 @@
           price: +$("#rpr").value || 0, food: +$("#rfd").value || 0, phone: $("#rph").value.trim(), emoji: $("#remo").value.trim() || "🏞️",
           tags: chipVals("rtags"), adText: $("#rad").value.trim(), description: $("#rdesc").value.trim(), lat: pos[0], lng: pos[1], adImage: img || null });
         persist("resorts", doc); delete S.analyses[doc.id]; analysis(doc.id); save();
-        track(r ? "resort_edit" : "resort_add", "org", { resortId: String(doc.id) }); toast(r ? "O'zgarishlar saqlandi" : "Maskan qo'shildi va AI tahlil qilindi");
+        track(r ? "resort_edit" : "resort_add", role(), { resortId: String(doc.id) }); toast(r ? "O'zgarishlar saqlandi" : "Maskan qo'shildi va AI tahlil qilindi");
         editing = null; render();
       };
       if ($("#rcancel")) $("#rcancel").onclick = () => { editing = null; render(); };
     }
     $$("[data-ed]").forEach(b => b.onclick = () => { editing = b.dataset.ed; render(); window.scrollTo(0, 0); });
     $$("[data-dl]").forEach(b => b.onclick = () => { if (!confirm("Maskan va uning sharhlari o'chirilsinmi?")) return; deleteResort(b.dataset.dl); render(); });
-    $$("[data-sendreply]").forEach(b => b.onclick = () => {
-      const v = S.reviews.find(x => String(x.id) === b.dataset.sendreply); const t = document.querySelector(`[data-reply="${b.dataset.sendreply}"]`).value.trim();
-      persist("reviews", Object.assign({}, v, { orgReply: t })); track("org_reply", "org"); toast("Javob yuborildi");
-    });
   }
   function deleteResort(id) {
     S.reviews = S.reviews.filter(v => String(v.resortId) !== String(id));
@@ -701,8 +717,8 @@
   }
 
   // ---------- Dasturchi paneli: analitika, AI sifati, foydalanuvchilar, moderatsiya ----------
-  let devTab = "analytics", devData = null, devRange = 14;
-  const devSource = () => devData || { events: S.events, aiLogs: S.aiLogs, users: S.users.map(u => ({ id: u.id, name: u.name, email: u.email, role: u.role, created: u.created })), local: true };
+  let devTab = null, devData = null, devRange = 14;
+  const devSource = () => devData || { events: S.events, aiLogs: S.aiLogs, users: S.users.map(u => ({ id: u.id, name: u.name, email: u.email, role: u.role, created: u.created, blocked: u.blocked })), local: true };
   function barChart(rows, h) {
     const max = Math.max(1, ...rows.map(r => r.v));
     return `<div class="chart" style="height:${h || 140}px">${rows.map(r => `<div class="col" title="${esc(r.l)}: ${r.v}"><span class="v">${r.v || ""}</span>
@@ -724,11 +740,35 @@
   }
   function devPanel() {
     const src = devSource();
-    const tabs = [["analytics", "📈 Analitika"], ["ai", "🤖 AI sifati"], ["users", "👥 Foydalanuvchilar"], ["mod", "🛠 Moderatsiya"]];
+    const isAdmin = role() === "admin";
+    const tabs = isAdmin ? [["dash", "🛡️ Boshqaruv"], ["users", "👥 Foydalanuvchilar"], ["resorts", "🏨 Maskanlar"], ["mod", "🛠 Sharhlar"], ["analytics", "📈 Analitika"], ["ai", "🤖 AI sifati"]]
+      : [["analytics", "📈 Analitika"], ["ai", "🤖 AI sifati"]];
+    if (!tabs.some(t => t[0] === devTab)) devTab = tabs[0][0];
     const from = Date.now() - devRange * 86400000;
     const ev = src.events.filter(e => e.ts >= from);
     let body = "";
-    if (devTab === "analytics") {
+    if (devTab === "dash") {
+      const us = src.users || [];
+      const pending = S.orgs.filter(o => !o.verified);
+      const sus = S.resorts.reduce((a, r) => a + analysis(r.id).suspicious, 0);
+      const logs = src.aiLogs.filter(l => l.ts >= from), runs = logs.filter(l => l.kind === "run").length;
+      const bad = logs.filter(l => l.kind === "error" || l.kind === "anomaly" || (l.kind === "feedback" && !l.ok)).length;
+      const rate = +(bad / Math.max(1, runs + bad) * 100).toFixed(2);
+      const cnt = r => us.filter(u => u.role === r).length;
+      body = `<div class="stat stat4"><div class="card reveal"><b data-count="${us.length}">0</b><span class="mut">hisoblar</span></div>
+        <div class="card reveal"><b data-count="${S.resorts.length}">0</b><span class="mut">maskanlar</span></div>
+        <div class="card reveal"><b data-count="${S.reviews.length}">0</b><span class="mut">sharhlar</span></div>
+        <div class="card reveal"><b data-count="${new Set(ev.map(e => e.visitor)).size}">0</b><span class="mut">tashrifchi (${devRange} kun)</span></div></div>
+        <div class="card reveal"><h2>👥 Hisoblar turlari</h2>${split([{ l: "Sayohatchi", v: cnt("client"), c: "#16a34a" }, { l: "Tashkilot", v: cnt("org"), c: "#0ea5e9" }, { l: "Analitik", v: cnt("analyst"), c: "#f59e0b" }, { l: "Admin", v: cnt("admin"), c: "#a855f7" }])}</div>
+        <div class="grid2"><div class="card reveal"><h2>⏳ Tasdiqlash kutayotgan tashkilotlar</h2>${pending.map(o => `<div class="kv"><span><b>${esc(o.name)}</b> <span class="mut">STIR: ${esc(o.inn || "—")}</span></span>
+          <button class="btn" data-verify="${o.id}" style="padding:6px 12px">Tasdiqlash</button></div>`).join("") || `<div class="mut">Hammasi tasdiqlangan ✅</div>`}</div>
+        <div class="card reveal"><h2>🚦 Tizim holati</h2><div class="kv"><span>AI xatolik darajasi</span><span class="badge ${rate <= 1 ? "g" : "r"}">${rate}%</span></div>
+          <div class="kv"><span>Shubhali sharhlar</span><span class="badge ${sus ? "y" : "g"}">${sus}</span></div>
+          <div class="kv"><span>Bloklangan hisoblar</span><b>${us.filter(u => u.blocked).length}</b></div>
+          <div class="kv"><span>Server</span><span class="badge ${online ? "g" : "n"}">${online ? "ulangan" : "oflayn"}</span></div></div></div>`;
+    } else if (devTab === "resorts") {
+      body = resortsManager(S.resorts.slice().sort((a, b) => (a.trust || 0) - (b.trust || 0)));
+    } else if (devTab === "analytics") {
       const pv = ev.filter(e => e.type === "page_view");
       const sessions = new Set(ev.map(e => (e.meta || {}).session || e.visitor));
       const visitors = new Set(ev.map(e => e.visitor));
@@ -792,10 +832,12 @@
       const us = (src.users || []).slice().sort((a, b) => (b.created || 0) - (a.created || 0));
       const lastSeen = {}; src.events.forEach(e => { if (e.user) lastSeen[e.user] = Math.max(lastSeen[e.user] || 0, e.ts); });
       const cnt = r => us.filter(u => u.role === r).length;
-      body = `<div class="stat stat4"><div class="card reveal"><b>${us.length}</b><span class="mut">jami</span></div><div class="card reveal"><b>${cnt("client")}</b><span class="mut">mijoz</span></div>
-        <div class="card reveal"><b>${cnt("org")}</b><span class="mut">tashkilot</span></div><div class="card reveal"><b>${cnt("developer")}</b><span class="mut">dasturchi</span></div></div>
-        <div class="card reveal"><h2>👥 Ro'yxatdan o'tganlar</h2>${us.map(u => `<div class="kv"><span><b>${esc(u.name)}</b> <span class="mut">${esc(u.email)}</span><br><span class="badge n">${ROLE_NAMES[u.role]}</span></span>
-          <span class="mut nowrap">${lastSeen[u.id] ? "oxirgi: " + ago(lastSeen[u.id]) : "—"}</span></div>`).join("") || `<div class="mut">Hali yo'q</div>`}</div>
+      body = `<div class="stat stat4"><div class="card reveal"><b>${us.length}</b><span class="mut">jami</span></div><div class="card reveal"><b>${cnt("client")}</b><span class="mut">sayohatchi</span></div>
+        <div class="card reveal"><b>${cnt("org")}</b><span class="mut">tashkilot</span></div><div class="card reveal"><b>${cnt("analyst") + cnt("admin")}</b><span class="mut">analitik / admin</span></div></div>
+        <div class="card reveal"><h2>👥 Ro'yxatdan o'tganlar</h2>${us.map(u => `<div class="kv user-row"><span><b>${esc(u.name)}</b>${u.blocked ? ` <span class="badge r">bloklangan</span>` : ""} <span class="mut">${esc(u.email)}</span><br>
+          <span class="mut">${lastSeen[u.id] ? "oxirgi faollik: " + ago(lastSeen[u.id]) : "faollik yo'q"}</span></span>
+          ${u.id === S.user.id ? `<span class="badge g">Siz · ${ROLE_NAMES[u.role]}</span>` : `<span class="row"><select data-urole="${u.id}" style="width:auto;padding:6px 8px">${Object.keys(ROLE_NAMES).filter(k => k !== "guest").map(k => `<option value="${k}" ${k === u.role ? "selected" : ""}>${ROLE_NAMES[k]}</option>`).join("")}</select>
+          <button class="btn ${u.blocked ? "sec" : "bad"}" data-ublock="${u.id}" style="padding:6px 10px">${u.blocked ? "Ochish" : "Bloklash"}</button></span>`}</div>`).join("") || `<div class="mut">Hali yo'q</div>`}</div>
         <div class="card reveal"><h2>🏢 Tashkilotlar</h2>${S.orgs.map(o => `<div class="kv"><span><b>${esc(o.name)}</b> <span class="mut">STIR: ${esc(o.inn || "—")}</span></span>
           <button class="btn ${o.verified ? "sec" : ""}" data-verify="${o.id}" style="padding:6px 12px">${o.verified ? "✔ Tasdiqlangan" : "Tasdiqlash"}</button></div>`).join("") || `<div class="mut">Hali yo'q</div>`}</div>`;
     } else {
@@ -810,7 +852,7 @@
         ${v.fakeReasons.length ? `<div class="mut">ⓘ ${esc(v.fakeReasons.join("; "))}</div>` : ""}<button class="btn bad" style="margin-top:6px;padding:6px 10px" data-hide="${v.id}">Yashirish</button></div>`).join("")}
         ${hidden.length ? `<div class="sec-title">Yashirilganlar</div>` + hidden.map(v => `<div class="card"><div>${esc(v.text)}</div><button class="btn sec" style="margin-top:6px;padding:6px 10px" data-unhide="${v.id}">Qaytarish</button></div>`).join("") : ""}`;
     }
-    return `${cabHdr("💻", "Dasturchi paneli", S.user.name, src.local ? "⚪ Lokal ma'lumot (faqat shu qurilma). Barcha foydalanuvchilar uchun serverga ulaning." : "🟢 Server: barcha foydalanuvchilar ma'lumoti")}
+    return `${cabHdr(isAdmin ? "🛡️" : "📈", isAdmin ? "Admin paneli" : "Analitik paneli", S.user.name, src.local ? "⚪ Lokal ma'lumot (faqat shu qurilma). Barcha foydalanuvchilar uchun serverga ulaning." : "🟢 Server: barcha foydalanuvchilar ma'lumoti")}
       <main><div class="tabs">${tabs.map(([k, l]) => `<button class="${k === devTab ? "on" : ""}" data-dtab="${k}">${l}</button>`).join("")}</div>${body}
       <button class="btn bad full" id="plogout" style="margin-top:6px">Chiqish</button></main>`;
   }
@@ -832,8 +874,97 @@
     const setHidden = (id, h) => { const rv = S.reviews.find(x => String(x.id) === String(id)); persist("reviews", Object.assign({}, rv, { hidden: h })); runAnalysis(rv.resortId, rerender); };
     $$("[data-hide]").forEach(b => b.onclick = () => setHidden(b.dataset.hide, true));
     $$("[data-unhide]").forEach(b => b.onclick = () => setHidden(b.dataset.unhide, false));
-    $$("[data-verify]").forEach(b => b.onclick = () => { const o = S.orgs.find(x => x.id === b.dataset.verify); persist("orgs", Object.assign({}, o, { verified: !o.verified })); render(); });
+    $$("[data-verify]").forEach(b => b.onclick = () => { const o = S.orgs.find(x => x.id === b.dataset.verify); persist("orgs", Object.assign({}, o, { verified: !o.verified })); toast(o.verified ? "Tasdiq bekor qilindi" : "Tashkilot tasdiqlandi"); render(); });
+    if ($("#pickmap") || $("[data-ed]")) resortsManagerBind();
+    // Admin: foydalanuvchi rolini o'zgartirish va bloklash
+    const updUser = async (id, patch) => {
+      try {
+        if (online) { await api(`/api/v1/users/${id}`, { method: "PUT", body: patch }); devData = null; }
+        else { const u = S.users.find(x => x.id === id); Object.assign(u, patch); save(); }
+        track("user_update", "admin", patch); toast("Saqlandi"); render();
+      } catch (e) { toast(e.message); }
+    };
+    $$("[data-urole]").forEach(s => s.onchange = () => updUser(s.dataset.urole, { role: s.value }));
+    $$("[data-ublock]").forEach(b => b.onclick = () => { const u = devSource().users.find(x => x.id === b.dataset.ublock); updUser(u.id, { blocked: !u.blocked }); });
   }
+
+  // ---------- 🔔 Bildirishnomalar va yangilanishlar ----------
+  let latest = null; // serverdagi so'nggi versiya
+  const newer = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
+    for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
+  async function checkUpdate() {
+    try { latest = await api("/api/v1/version", { timeout: 4000 }); drawBell(); } catch (e) {}
+  }
+  function notifications() {
+    const n = [];
+    if (latest && newer(latest.version, APP_VERSION))
+      n.push({ id: "upd-" + latest.version, icon: "🚀", title: `Yangi versiya: ${latest.version}`, text: (latest.notes || []).join(" · "), action: "update", important: true });
+    if (S.seenVersion !== APP_VERSION) {
+      const c = CHANGELOG.find(x => x.v === APP_VERSION);
+      n.push({ id: "new-" + APP_VERSION, icon: "✨", title: `Nima yangi (v${APP_VERSION})`, text: c ? c.notes.join(" · ") : "" });
+    }
+    const r = role();
+    if (r === "client") S.reviews.filter(v => v.userId === S.user.id && v.orgReply).forEach(v =>
+      n.push({ id: "rep-" + v.id + "-" + v.orgReply.length, icon: "💬", title: `${resort(v.resortId) ? resort(v.resortId).name : "Maskan"} javob berdi`, text: v.orgReply, go: "resort/" + v.resortId }));
+    if (r === "org") {
+      const mine = S.resorts.filter(x => x.owner === S.user.id).map(x => String(x.id));
+      S.reviews.filter(v => mine.includes(String(v.resortId)) && !v.orgReply && !v.hidden).forEach(v =>
+        n.push({ id: "rev-" + v.id, icon: v.rating <= 2 ? "⚠️" : "⭐", title: `Yangi sharh: ${resort(v.resortId).name}`, text: `${v.author} (${v.rating}★): ${v.text}`, go: "profile", tab: "reviews" }));
+      const o = myOrg(); if (o && o.verified) n.push({ id: "ver-" + o.id, icon: "✅", title: "Tashkilotingiz tasdiqlandi", text: "Endi maskanlaringizda \"Tasdiqlangan\" belgisi ko'rinadi." });
+    }
+    if (r === "admin") S.orgs.filter(o => !o.verified).forEach(o => n.push({ id: "org-" + o.id, icon: "🏢", title: "Tashkilot tasdiqlashni kutmoqda", text: o.name, go: "profile", tab: "dash" }));
+    if (r === "admin" || r === "analyst") {
+      const day = S.aiLogs.filter(l => l.ts > Date.now() - 86400000), runs = day.filter(l => l.kind === "run").length;
+      const bad = day.filter(l => l.kind === "error" || l.kind === "anomaly" || (l.kind === "feedback" && !l.ok)).length;
+      const rate = bad / Math.max(1, runs + bad) * 100;
+      if (bad && rate > 1) n.push({ id: "ai-" + new Date().toDateString() + "-" + bad, icon: "🚨", title: `AI xatolik darajasi ${rate.toFixed(1)}%`, text: `Oxirgi 24 soatda ${bad} ta hodisa. Maqsad ≤ 1%.`, go: "profile", tab: "ai", important: true });
+    }
+    const read = S.readNotif || [];
+    return n.map(x => Object.assign(x, { unread: !read.includes(x.id) }));
+  }
+  function drawBell() {
+    const b = $("#bell"); if (!b) return;
+    const k = notifications().filter(x => x.unread).length;
+    b.querySelector(".count").textContent = k > 9 ? "9+" : k;
+    b.classList.toggle("has", k > 0);
+  }
+  function openBell() {
+    const list = notifications();
+    const box = document.createElement("div"); box.className = "sheet-wrap";
+    box.innerHTML = `<div class="sheet"><div class="row between"><h2 style="margin:0">🔔 Bildirishnomalar</h2><button class="icon-btn" data-close aria-label="Yopish">✕</button></div>
+      <div class="mut" style="margin:4px 0 12px">Ilova versiyasi: v${APP_VERSION}${latest ? ` · serverdagi: v${esc(latest.version)}` : online ? "" : " · oflayn"}</div>
+      ${list.map(x => `<div class="notif ${x.unread ? "unread" : ""} ${x.important ? "imp" : ""}" data-nid="${esc(x.id)}"><span class="ni">${x.icon}</span><div style="flex:1;min-width:0"><b>${esc(x.title)}</b>
+        <div class="mut">${esc(x.text)}</div>${x.action === "update" ? `<button class="btn" data-update style="margin-top:8px">⬇️ Hozir yangilash</button>` : ""}</div></div>`).join("") || `<div class="mut" style="text-align:center;padding:24px">Yangi xabar yo'q 🌿</div>`}
+      <button class="btn sec full" data-check style="margin-top:10px">🔄 Yangilanishni tekshirish</button></div>`;
+    document.body.appendChild(box); requestAnimationFrame(() => box.classList.add("on"));
+    const close = () => { box.classList.remove("on"); setTimeout(() => box.remove(), 300); };
+    // Ochilganda hammasi o'qilgan deb belgilanadi
+    S.readNotif = [...new Set((S.readNotif || []).concat(list.map(x => x.id)))].slice(-300); S.seenVersion = APP_VERSION; save(); drawBell();
+    box.onclick = e => {
+      if (e.target === box || e.target.closest("[data-close]")) return close();
+      if (e.target.closest("[data-update]")) return doUpdate();
+      if (e.target.closest("[data-check]")) { toast("Tekshirilmoqda..."); return checkUpdate().then(() => { close(); setTimeout(openBell, 320); if (!latest) toast("Server bilan aloqa yo'q"); }); }
+      const it = e.target.closest("[data-nid]"); const x = it && list.find(n => n.id === it.dataset.nid);
+      if (x && x.go) { if (x.tab) { orgTab = x.tab; devTab = x.tab; } close(); go(x.go); }
+    };
+    track("bell_open", current.split("/")[0], { count: list.length });
+  }
+  function doUpdate() {
+    track("update_click", "bell", { from: APP_VERSION, to: latest && latest.version });
+    if (PLATFORM === "app") {
+      // Ilova: yangi APK yuklab olinadi (Android o'rnatishni so'raydi)
+      const url = latest && latest.apk ? (/^https?:/.test(latest.apk) ? latest.apk : API + latest.apk) : null;
+      if (!url || !/^https?:/.test(url)) return toast("Yangilanish manzili topilmadi");
+      toast("Yangi versiya yuklanmoqda..."); location.href = url;
+    } else {
+      // Web: yangi fayllarni qayta yuklash
+      toast("Yangilanmoqda..."); setTimeout(() => location.replace(location.pathname + "?v=" + encodeURIComponent(latest ? latest.version : Date.now())), 400);
+    }
+  }
+  const bell = document.createElement("button"); bell.id = "bell"; bell.setAttribute("aria-label", "Bildirishnomalar");
+  bell.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span class="count">0</span>`;
+  bell.onclick = openBell; document.body.appendChild(bell);
+  setInterval(checkUpdate, 10 * 60 * 1000);
 
   // ---------- Router ----------
   const ICONS = {
@@ -843,7 +974,7 @@
     plan: '<path d="M5 8h14l-1 12H6z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>',
     profile: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/>'
   };
-  const navLabel = () => S.user ? { client: "Kabinet", org: "Tashkilot", developer: "Panel" }[S.user.role] : "Profil";
+  const navLabel = () => S.user ? { client: "Kabinet", org: "Tashkilot", analyst: "Analitika", admin: "Admin" }[S.user.role] : "Profil";
   const NAV = () => [["home", "Bosh sahifa"], ["search", "Qidiruv"], ["map", "Xarita"], ["plan", "AI reja"], ["profile", navLabel()]];
   const hist = [];
   let current = "home";
@@ -863,10 +994,11 @@
     $$("[data-nav]").forEach(el => el.onclick = () => go(el.dataset.nav));
     $$("[data-back]").forEach(el => el.onclick = () => window.goBack());
     if (isNav) track("page_view", name);
+    drawBell();
   }
   // data-go elementlari keyin qayta chizilishi mumkin, shuning uchun delegatsiya
   $("#app").addEventListener("click", e => { const el = e.target.closest("[data-go]"); if (el) { e.preventDefault(); go(el.dataset.go); } });
   track("session_start", "home", { lang: navigator.language, screen: screen.width + "x" + screen.height });
   render(true);
-  syncFromServer();
+  syncFromServer().then(checkUpdate);
 })();

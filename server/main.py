@@ -3,7 +3,8 @@
 Ishga tushirish:  uvicorn server.main:app --host 0.0.0.0 --port 8000
 Muhit o'zgaruvchilari:
   SECRET_KEY  — token imzolash kaliti (majburiy, production'da)
-  DEV_CODE    — dasturchi sifatida ro'yxatdan o'tish kodi (standart: dev2026)
+  ANALYST_CODE — analitik sifatida ro'yxatdan o'tish kodi (standart: analitik2026)
+  ADMIN_CODE   — admin sifatida ro'yxatdan o'tish kodi (standart: admin2026)
   DB_PATH     — SQLite fayli (standart: data/sayohatchi.db)
 """
 import hashlib
@@ -22,12 +23,14 @@ from fastapi.staticfiles import StaticFiles
 
 ROOT = Path(__file__).resolve().parent.parent
 SECRET = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
-DEV_CODE = os.environ.get("DEV_CODE", "dev2026")
+CODES = {"analyst": os.environ.get("ANALYST_CODE") or os.environ.get("DEV_CODE") or "analitik2026",
+         "admin": os.environ.get("ADMIN_CODE", "admin2026")}
 DB_PATH = Path(os.environ.get("DB_PATH", ROOT / "data" / "sayohatchi.db"))
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 COLLECTIONS = {"resorts", "reviews", "orgs", "visits"}
-ROLES = {"client", "org", "developer"}
+ROLES = {"client", "org", "analyst", "admin"}
+STAFF = {"analyst", "admin"}  # analitikani ko'ra oladi
 
 app = FastAPI(title="Sayohatchi AI API", version="1.0")
 # Ilova (APK) boshqa manbadan so'rov yuboradi, shuning uchun CORS ochiq; token Authorization sarlavhasida
@@ -49,6 +52,8 @@ with db() as c:
     CREATE INDEX IF NOT EXISTS ev_ts ON events(ts);
     CREATE INDEX IF NOT EXISTS docs_col ON docs(col);
     """)
+    if "blocked" not in [r[1] for r in c.execute("PRAGMA table_info(users)")]:
+        c.execute("ALTER TABLE users ADD COLUMN blocked INTEGER DEFAULT 0")
 
 
 # ---------- Auth ----------
@@ -80,8 +85,8 @@ def current_user(authorization: str = Header(None)):
     if not hmac.compare_digest(good, sig) or int(exp) < time.time():
         return None
     with db() as c:
-        r = c.execute("SELECT id,name,email,role FROM users WHERE id=?", (uid,)).fetchone()
-    return dict(r) if r else None
+        r = c.execute("SELECT id,name,email,role,blocked FROM users WHERE id=?", (uid,)).fetchone()
+    return dict(r) if r and not r["blocked"] else None
 
 
 def need_user(u=Depends(current_user)):
@@ -96,7 +101,8 @@ _hits = defaultdict(deque)
 
 def limit(request: Request, n: int = 120):
     ip = request.client.host if request.client else "?"
-    q, now = _hits[ip], time.time()
+    # Har bir endpoint guruhi (n) uchun alohida hisoblagich — ko'rish so'rovlari kirish limitini to'ldirmasin
+    q, now = _hits[(ip, n)], time.time()
     while q and q[0] < now - 60:
         q.popleft()
     if len(q) >= n:
@@ -117,12 +123,12 @@ async def register(request: Request):
         raise HTTPException(400, "Noto'g'ri rol")
     if len(name) < 2 or "@" not in email or len(pw) < 6:
         raise HTTPException(400, "Ism, email va kamida 6 belgili parol kiriting")
-    if role == "developer" and not hmac.compare_digest(str(b.get("devCode") or ""), DEV_CODE):
-        raise HTTPException(403, "Dasturchi kodi noto'g'ri")
+    if role in CODES and not hmac.compare_digest(str(b.get("code") or ""), CODES[role]):
+        raise HTTPException(403, "Kirish kodi noto'g'ri")
     uid = "u" + secrets.token_hex(6)
     try:
         with db() as c:
-            c.execute("INSERT INTO users VALUES(?,?,?,?,?,?)", (uid, name, email, hash_pw(pw), role, time.time()))
+            c.execute("INSERT INTO users(id,name,email,pw,role,created,blocked) VALUES(?,?,?,?,?,?,0)", (uid, name, email, hash_pw(pw), role, time.time()))
     except sqlite3.IntegrityError:
         raise HTTPException(409, "Bu email bilan ro'yxatdan o'tilgan")
     u = {"id": uid, "name": name, "email": email, "role": role}
@@ -137,6 +143,8 @@ async def login(request: Request):
         r = c.execute("SELECT * FROM users WHERE email=?", ((b.get("email") or "").strip().lower(),)).fetchone()
     if not r or not check_pw(b.get("password") or "", r["pw"]):
         raise HTTPException(401, "Email yoki parol noto'g'ri")
+    if r["blocked"]:
+        raise HTTPException(403, "Hisobingiz bloklangan. Admin bilan bog'laning")
     return {"token": make_token(r["id"]), "user": public_user(r)}
 
 
@@ -167,8 +175,10 @@ async def seed(request: Request):
 
 
 def can_write(col, doc, old, u):
-    if u["role"] == "developer":
+    if u["role"] == "admin":
         return True
+    if u["role"] == "analyst":
+        return False  # analitik faqat ko'radi
     if old is None:  # yangi hujjat
         if col == "resorts":
             return u["role"] == "org"
@@ -217,7 +227,7 @@ def del_doc(col: str, doc_id: str, u=Depends(need_user)):
         old = c.execute("SELECT owner FROM docs WHERE col=? AND id=?", (col, doc_id)).fetchone()
         if not old:
             return {"ok": True}
-        if u["role"] != "developer" and old["owner"] != u["id"]:
+        if u["role"] != "admin" and old["owner"] != u["id"]:
             raise HTTPException(403, "Ruxsat yo'q")
         c.execute("DELETE FROM docs WHERE col=? AND id=?", (col, doc_id))
         if col == "resorts":
@@ -247,16 +257,41 @@ async def events(request: Request):
 
 @app.get("/api/v1/analytics")
 def analytics(u=Depends(need_user)):
-    if u["role"] != "developer":
-        raise HTTPException(403, "Faqat dasturchilar uchun")
+    if u["role"] not in STAFF:
+        raise HTTPException(403, "Faqat analitik va admin uchun")
     with db() as c:
         ev = [dict(r) for r in c.execute("SELECT * FROM events WHERE ts>? ORDER BY ts DESC LIMIT 50000", (time.time() - 90 * 86400,))]
         logs = [json.loads(r["detail"]) for r in c.execute("SELECT detail FROM ai_logs ORDER BY ts DESC LIMIT 2000")]
-        users = [dict(r) for r in c.execute("SELECT id,name,email,role,created FROM users ORDER BY created DESC")]
+        users = [dict(r) for r in c.execute("SELECT id,name,email,role,created,blocked FROM users ORDER BY created DESC")]
     for e in ev:
         e["ts"] = e["ts"] * 1000
         e["meta"] = json.loads(e["meta"] or "{}")
     return {"events": ev, "aiLogs": logs, "users": users}
+
+
+@app.put("/api/v1/users/{user_id}")
+async def update_user(user_id: str, request: Request, u=Depends(need_user)):
+    """Admin: foydalanuvchini bloklash yoki rolini o'zgartirish."""
+    if u["role"] != "admin":
+        raise HTTPException(403, "Faqat admin uchun")
+    if user_id == u["id"]:
+        raise HTTPException(400, "O'z hisobingizni o'zgartira olmaysiz")
+    b = await request.json()
+    with db() as c:
+        if "blocked" in b:
+            c.execute("UPDATE users SET blocked=? WHERE id=?", (1 if b["blocked"] else 0, user_id))
+        if b.get("role") in ROLES:
+            c.execute("UPDATE users SET role=? WHERE id=?", (b["role"], user_id))
+    return {"ok": True}
+
+
+@app.get("/api/v1/version")
+def version():
+    """Ilovaning so'nggi versiyasi — qo'ng'iroqcha (🔔) shu orqali yangilanishni ko'rsatadi."""
+    try:
+        return json.loads((ROOT / "server" / "version.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"version": "0", "notes": []}
 
 
 @app.get("/api/v1/health")
@@ -265,4 +300,6 @@ def health():
 
 
 # Sayt fayllari (web/) — API bilan bitta domenda
+(ROOT / "download").mkdir(exist_ok=True)
+app.mount("/download", StaticFiles(directory=ROOT / "download"), name="download")  # yangi APK shu yerga qo'yiladi
 app.mount("/", StaticFiles(directory=ROOT / "web", html=True), name="web")
