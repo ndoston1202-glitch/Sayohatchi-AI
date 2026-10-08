@@ -289,7 +289,7 @@ async def update_user(user_id: str, request: Request, u=Depends(need_user)):
 def version():
     """Ilovaning so'nggi versiyasi — qo'ng'iroqcha (🔔) shu orqali yangilanishni ko'rsatadi."""
     try:
-        return json.loads((ROOT / "server" / "version.json").read_text(encoding="utf-8"))
+        return json.loads((ROOT / "web" / "version.json").read_text(encoding="utf-8"))  # sayt bilan bitta manba
     except (OSError, ValueError):
         return {"version": "0", "notes": []}
 

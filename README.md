@@ -21,7 +21,7 @@ Har bir ekranda o'ng yuqorida qo'ng'iroqcha bor:
 - **Nima yangi** — yangilanishdan keyin o'zgarishlar ro'yxati.
 - Rolga qarab: sayohatchiga — tashkilot javobi; tashkilotga — yangi sharhlar, tasdiqlanish; adminga — tasdiq kutayotgan tashkilotlar; analitik/adminga — AI xatoligi 1% dan oshsa ogohlantirish.
 
-**Yangi versiya chiqarish:** `web/app.js` dagi `APP_VERSION` va `android/AndroidManifest.xml` dagi versiyani oshiring → `API_URL=https://domen.uz ./build_apk.sh` → APK'ni serverdagi `download/` papkaga qo'ying → `server/version.json` da `version` va `notes` ni yangilang. Barcha foydalanuvchilarning qo'ng'iroqchasida yangilanish chiqadi.
+**Yangi versiya chiqarish:** `web/app.js` dagi `APP_VERSION` va `android/AndroidManifest.xml` dagi versiyani oshiring → `API_URL=https://domen.uz ./build_apk.sh` → APK'ni `Sayohatchi-AI.apk` va `download/` ga qo'ying → `web/version.json` da `version` va `notes` ni yangilang → push. Barcha foydalanuvchilarning qo'ng'iroqchasida yangilanish chiqadi.
 
 ## Imkoniyatlar
 - Yashil "tabiat" dizayni: animatsiyali tog'/quyosh/bulut sahnasi, kartochkalar paydo bo'lishi, raqamlar sanalishi, halqa va chiziqlar to'lishi, AI xulosasi "yozilishi", tugma to'lqin effekti
@@ -31,6 +31,13 @@ Har bir ekranda o'ng yuqorida qo'ng'iroqcha bor:
 - "Reklama vs Real" rasm taqqoslash
 
 > AI natijalari yakuniy haqiqat emas — ma'lumotlarga asoslangan ehtimoliy tahlil va tavsiya.
+
+## 🌐 Web versiya (GitHub Pages)
+Sayt manzili: **https://ndoston1202-glitch.github.io/sayohatchi-ai/**
+- `main` ga har push qilinganda `.github/workflows/pages.yml` saytni avtomatik yangilaydi.
+- Sayt **ilova sifatida o'rnatiladi** (PWA): bosh sahifadagi "📲 O'rnatish" tugmasi yoki brauzer menyusi orqali. Internetsiz ham ochiladi.
+- 🔔 qo'ng'iroqcha `web/version.json` ni tekshiradi: versiya oshirilsa, barcha foydalanuvchilarda "Yangi versiya" chiqadi.
+- Pages'da backend yo'q — ma'lumotlar har bir foydalanuvchi brauzerida saqlanadi. Umumiy baza va analitika uchun serverga o'rnating (pastda).
 
 ## Ishlash rejimlari
 - **Server bilan** (tavsiya): barcha foydalanuvchilar ma'lumoti va analitika umumiy, parollar serverda PBKDF2 bilan saqlanadi.

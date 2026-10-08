@@ -260,7 +260,7 @@
         <div class="card reveal"><b data-count="${S.resorts.length}">0</b><span class="mut">maskan</span></div>
         <div class="card reveal"><b data-count="${S.reviews.length}">0</b><span class="mut">sharh tahlili</span></div>
         <div class="card reveal"><b data-count="${sus}">0</b><span class="mut">shubhali sharh</span></div></div>
-      <div class="card reveal plan-cta" data-go="plan"><div class="ic">🎒</div><div style="flex:1"><h3>Byudjetingizga mos sayohat</h3>
+      ${installHtml()}<div class="card reveal plan-cta" data-go="plan"><div class="ic">🎒</div><div style="flex:1"><h3>Byudjetingizga mos sayohat</h3>
         <div class="mut">Summani kiriting — AI qayerga borish mumkinligini hisoblab beradi</div></div><span class="go">→</span></div>
       <div class="sec-title">🌿 Eng ishonchli maskanlar <a data-go="search/">Barchasi →</a></div>
       <div class="carousel">${top.map((r, i) => `<div class="feat reveal" data-go="resort/${r.id}" style="background:linear-gradient(150deg,${grads[i % 4]})">
@@ -892,8 +892,18 @@
   let latest = null; // serverdagi so'nggi versiya
   const newer = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
     for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
+  // Yangi versiyani tekshirish: avval server, keyin saytning o'zidagi version.json, keyin GitHub Pages
   async function checkUpdate() {
-    try { latest = await api("/api/v1/version", { timeout: 4000 }); drawBell(); } catch (e) {}
+    const tryJson = async url => { const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 5000);
+      try { const r = await fetch(url + (url.includes("?") ? "&" : "?") + "t=" + Date.now(), { signal: ctl.signal, cache: "no-store" });
+        if (!r.ok) throw 0; const d = await r.json(); d._base = url; return d; } finally { clearTimeout(t); } };
+    const sources = [];
+    if (online) sources.push(API + "/api/v1/version");
+    if (/^https?:/.test(location.protocol)) sources.push(new URL("version.json", location.href).href);
+    if (window.SAYOHATCHI_UPDATE_URL) sources.push(window.SAYOHATCHI_UPDATE_URL);
+    for (const u of sources) { try { latest = await tryJson(u); break; } catch (e) {} }
+    if (swReg) swReg.update().catch(() => {});
+    drawBell();
   }
   function notifications() {
     const n = [];
@@ -953,14 +963,35 @@
     track("update_click", "bell", { from: APP_VERSION, to: latest && latest.version });
     if (PLATFORM === "app") {
       // Ilova: yangi APK yuklab olinadi (Android o'rnatishni so'raydi)
-      const url = latest && latest.apk ? (/^https?:/.test(latest.apk) ? latest.apk : API + latest.apk) : null;
+      let url = null;
+      try { url = latest && latest.apk ? new URL(latest.apk, /\/api\/v1\/version/.test(latest._base) ? (API || location.origin) + "/" : latest._base).href : null; } catch (e) {}
       if (!url || !/^https?:/.test(url)) return toast("Yangilanish manzili topilmadi");
       toast("Yangi versiya yuklanmoqda..."); location.href = url;
     } else {
       // Web: yangi fayllarni qayta yuklash
-      toast("Yangilanmoqda..."); setTimeout(() => location.replace(location.pathname + "?v=" + encodeURIComponent(latest ? latest.version : Date.now())), 400);
+      // Web: service worker yangi fayllarni oladi, keyin sahifa qayta yuklanadi
+      toast("Yangilanmoqda...");
+      const reload = () => location.replace(location.pathname + "?v=" + encodeURIComponent(latest ? latest.version : Date.now()));
+      (swReg ? swReg.update().catch(() => {}) : Promise.resolve()).then(() => caches && caches.keys ? caches.keys().then(k => Promise.all(k.map(x => caches.delete(x)))) : 0).catch(() => {}).then(() => setTimeout(reload, 300));
     }
   }
+  // ---------- Web ilovani o'rnatish (PWA) ----------
+  let swReg = null, installEvt = null;
+  if ("serviceWorker" in navigator && /^https?:/.test(location.protocol) && PLATFORM === "web")
+    navigator.serviceWorker.register("sw.js").then(r => { swReg = r; }).catch(() => {});
+  const standalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+  window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; render(); });
+  window.addEventListener("appinstalled", () => { installEvt = null; track("pwa_installed", "home"); toast("Ilova o'rnatildi! Endi bosh ekrandan oching"); render(); });
+  function installHtml() {
+    if (PLATFORM !== "web" || standalone()) return "";
+    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    if (!installEvt && !ios) return "";
+    return `<div class="card reveal install"><div class="ic">📲</div><div style="flex:1"><h3>Ilova sifatida o'rnating</h3>
+      <div class="mut">${ios ? "Safari'da «Ulashish» → «Bosh ekranga qo'shish» ni bosing" : "Bosh ekrandan bir bosishda oching, internetsiz ham ishlaydi"}</div></div>
+      ${installEvt ? `<button class="btn" id="pwa">O'rnatish</button>` : ""}</div>`;
+  }
+  document.addEventListener("click", e => { if (e.target.closest("#pwa") && installEvt) { installEvt.prompt(); installEvt.userChoice.then(c => { track("pwa_prompt", "home", { outcome: c.outcome }); installEvt = null; render(); }); } });
+
   const bell = document.createElement("button"); bell.id = "bell"; bell.setAttribute("aria-label", "Bildirishnomalar");
   bell.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span class="count">0</span>`;
   bell.onclick = openBell; document.body.appendChild(bell);
